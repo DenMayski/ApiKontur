@@ -16,7 +16,7 @@ import time
 import numpy as np
 
 # import time
-from Api import ApiBilly, ApiBitrix
+from API import ApiBilly, ApiBitrix
 from DAL import DAL
 
 cur = DAL()  # Экземпляр класса DAL для работы с БД
@@ -160,7 +160,8 @@ while True:
             for row in table.fetchall():
                 try:
                     if not row[4]:
-                        bitrix.GET(bitrix.URL_bitrix + f"/crm.requisite.list?select[]=ENTITY_ID&filter[RQ_INN]={row[1]}")
+                        bitrix.GET(bitrix.URL_bitrix + f"/crm.requisite.list"
+                                                       f"?select[]=ENTITY_ID&filter[RQ_INN]={row[1]}")
                         time.sleep(0.6)
                         if bitrix.result.json()['total'] == 1:
                             cur.EXECUTE(f"UPDATE clients SET "
@@ -179,7 +180,8 @@ while True:
                                 email = "None"
                                 number = "None"
 
-                                if "контакты" not in js["Contacts"][0]["Name"].lower() and js["Contacts"][0]["Name"] != "":
+                                if "контакты" not in js["Contacts"][0]["Name"].lower() and \
+                                        js["Contacts"][0]["Name"] != "":
                                     if len(js["Contacts"][0]["Name"].lower().split(" ")) == 3:
                                         name = js["Contacts"][0]["Name"]
 
