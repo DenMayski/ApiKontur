@@ -10,8 +10,10 @@
 #     raise Exception
 import datetime
 import json
-import os
 import time
+import sys
+import os
+import traceback
 
 import numpy as np
 
@@ -22,30 +24,55 @@ from DAL import DAL
 cur = DAL()  # Экземпляр класса DAL для работы с БД
 resp_api = ApiBilly()  # Экземпляр класса API для работы с Api
 bitrix = ApiBitrix()
-while True:
-    os.system("CLS")
+parameters = sys.argv[1:]
+action = {
+    1: "Проверить новости",
+    2: "Проверить закрытые продажи",
+    3: "Получить информацию по компаниям",
+    4: "Выделить организации",
+    5: "Выход"
+}
+s_action = '\n'.join([f"{key}) {value}" for key, value in action.items()]) + '\n'
+
+if not parameters:
     while True:
-        try:
-            ch = int(input(
-                "Выберите действие \n1) Проверить новости\n2) Проверить закрытые продажи"
-                "\n3) Получить информацию по компаниям\n4) Выделить организации \n5) Выход\n"))
-            break
-        except ValueError as msg:
-            print("Введите корректные данные\n")
+        parameters.append(input(s_action))
+        # Если значение целое число и в промежутке от 1 до 5, то программа идет дальше
+        if parameters[0].isdigit():
+            if 0 < int(parameters[0]) < 6:
+                break
+        print(f"Значение <{parameters.pop()}> не корректно, попробуйте ввести значение заново\n")
+
+for i in range(len(parameters)):
+    print()
+    if not parameters[i].isdigit():
+        print(f"Значение <{parameters[i]}> не корректно, попробуйте ввести значение заново\n")
+        while True:
+            parameters[i] = input(s_action)
+            # Если значение целое число и в промежутке от 1 до 5, то программа идет дальше
+            if parameters[i].isdigit():
+                if 0 < int(parameters[i]) < 6:
+                    break
+
+    ch = int(parameters[i])
+
+    print(f"Вы выбрали {action[ch]}")
+    # os.system("CLS")
 
     try:
         if ch == 1:
             print(f"Время начала: {datetime.datetime.now().strftime('%d %b - %H:%M:%S')}")
             result_requests = []  # Список ПП
             i = 0
+            j = 0
+
             # Запрос к API Контура
             while True:
                 # Проверка статуса запроса
                 if resp_api.GET(resp_api.methods['News'], resp_api.REQ_PARAMS).status_code == 200:
-                    NextTimeStamp = resp_api.result.json()["NextTimeStamp"]
                     # result_requests.append(resp_api.result.json())  # Запись результата в список
-                    for fields in resp_api.result.json()["News"]:
-
+                    News = resp_api.result.json()
+                    for fields in News["News"]:
                         # Получение основных данных ПП
                         params = {
                             "idPs": fields['Id'],
@@ -108,15 +135,19 @@ while True:
                             # print(s_exec)
                             if s_exec:
                                 cur.EXECUTE(s_exec)  # Выполнение запроса к БД
-                    resp_api.UpdateTimeStamp(NextTimeStamp)  # Обновление параметров запроса
+                                j += 1
+                                print(f"Обработано {j} новостей")
+                    resp_api.UpdateTimeStamp(News["NextTimestamp"])  # Обновление параметров запроса
+
                     i += 1
-                    print(f"Количество запросов {i}")
+                    # print(f"Количество запросов {i}")
+
+                    # Проверка на наличие новых данных
+                    if not News['HasMore']:
+                        break
+
                 else:
                     print(f'Error: {resp_api.result.status_code} code')
-                    break
-
-                # Проверка на наличие новых данных
-                if not resp_api.result.json()['HasMore']:
                     break
 
             print("Последняя метка", resp_api.REQ_PARAMS['from'])
@@ -169,6 +200,7 @@ while True:
                                         f"WHERE guid = '{row[0]}'")
                             print(row[1], "in database +")
                         else:
+
                             cur.SELECT(f"SELECT * FROM prospectivesales WHERE idOrganization = '{row[0]}'")
                             rowProspective = cur.cursor.fetchone()
 
@@ -189,6 +221,8 @@ while True:
 
                                 if name:
                                     name = name.title()
+                                else:
+                                    name = "None"
 
                                 if len(js["Contacts"][0]["Emails"]):
                                     email = js["Contacts"][0]["Emails"][0]["Address"]
@@ -239,5 +273,5 @@ while True:
             print("Такого варианта нет")
     except Exception as mes:
         print("Something is wrong ", mes.args[0])
-    os.system("pause")
+    # os.system("pause")
 print("Bye-Bye")

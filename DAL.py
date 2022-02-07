@@ -59,7 +59,6 @@ class DAL:
             print(err)
         return self.cursor
 
-
     def SELECT_ALL(self, tablename):
         """
         Запрос SELECT к таблице БД, без условий
@@ -68,7 +67,7 @@ class DAL:
         :rtype: pymysql.Connection.cursor-class
         """
         self.SELECT(f"SELECT * FROM {tablename}")
-        return  self.cursor
+        return self.cursor
 
     def EXECUTE(self, sql):
         """
