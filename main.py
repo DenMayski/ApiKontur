@@ -1,19 +1,9 @@
-# count = 0
-#     with open('data_file', 'w', encoding='utf-8') as write_file:
-#         s=""
-#         for row in cur.SELECT_ALL("prospectivesales").fetchall():
-#             s += row[7].replace("\n", "\\n")
-#             count += 1
-#             if count < cur.cursor.rowcount:
-#                 s+=(",")
-#         json.dump(s, write_file, ensure_ascii=False, indent=0)
-#     raise Exception
 import datetime
 import json
 import time
 import sys
-import os
-import traceback
+# import os
+# import traceback
 
 import numpy as np
 
@@ -24,6 +14,7 @@ from DAL import DAL
 cur = DAL()  # Экземпляр класса DAL для работы с БД
 resp_api = ApiBilly()  # Экземпляр класса API для работы с Api
 bitrix = ApiBitrix()
+
 parameters = sys.argv[1:]
 action = {
     1: "Проверить новости",
@@ -32,6 +23,7 @@ action = {
     4: "Выделить организации",
     5: "Выход"
 }
+
 s_action = '\n'.join([f"{key}) {value}" for key, value in action.items()]) + '\n'
 
 if not parameters:
@@ -188,61 +180,58 @@ for i in range(len(parameters)):
 
         elif ch == 3:
             table = cur.SELECT("Select * from Clients where ClientType = 3")
+
             for row in table.fetchall():
-                try:
-                    if not row[4]:
-                        bitrix.GET(bitrix.URL_bitrix + f"/crm.requisite.list"
-                                                       f"?select[]=ENTITY_ID&filter[RQ_INN]={row[1]}")
-                        time.sleep(0.6)
-                        if bitrix.result.json()['total'] == 1:
-                            cur.EXECUTE(f"UPDATE clients SET "
-                                        f"ReqID = '{bitrix.result.json()['result'][0]['ENTITY_ID']}' "
-                                        f"WHERE guid = '{row[0]}'")
-                            print(row[1], "in database +")
-                        else:
+                if not row[4]:
+                    bitrix.GET(bitrix.URL_bitrix + f"/crm.requisite.list"
+                                                   f"?select[]=ENTITY_ID&filter[RQ_INN]={row[1]}")
+                    time.sleep(0.6)
+                    if bitrix.result.json()['total'] == 1:
+                        cur.EXECUTE(f"UPDATE clients SET "
+                                    f"ReqID = '{bitrix.result.json()['result'][0]['ENTITY_ID']}' "
+                                    f"WHERE guid = '{row[0]}'")
+                        print(row[1], "in database +")
+                    else:
+                        cur.SELECT(f"SELECT * FROM prospectivesales WHERE idOrganization = '{row[0]}'")
+                        rowProspective = cur.cursor.fetchone()
 
-                            cur.SELECT(f"SELECT * FROM prospectivesales WHERE idOrganization = '{row[0]}'")
-                            rowProspective = cur.cursor.fetchone()
+                        js = json.loads(rowProspective[7])
+                        s_message = ""
 
-                            js = json.loads(rowProspective[7])
-                            s_message = ""
+                        if len(js["Contacts"]):
+                            name = str(js["Organization"]["Name"]).title()
+                            email = ""
+                            phone = ""
 
-                            if len(js["Contacts"]):
-                                name = js["Organization"]["Name"]
-                                email = "None"
-                                number = "None"
+                            if len(js["Contacts"][0]["Emails"]):
+                                email = js["Contacts"][0]["Emails"][0]["Address"]
 
-                                if "контакты" not in js["Contacts"][0]["Name"].lower() and \
-                                        js["Contacts"][0]["Name"] != "":
-                                    if len(js["Contacts"][0]["Name"].lower().split(" ")) == 3:
-                                        name = js["Contacts"][0]["Name"]
+                            if len(js["Contacts"][0]["Phones"]):
+                                phone = js["Contacts"][0]["Phones"][0]["Number"]
+                                if js["Contacts"][0]["Phones"][0]["AdditionalNumber"]:
+                                    phone += f'({js["Contacts"][0]["Phones"][0]["AdditionalNumber"]})'
 
-                                name = str(name)
+                            s_req = f"FIELDS[OPENED]=Y&" \
+                                    f"FIELDS[ASSIGNED_BY_ID]=1&" \
+                                    f"FIELDS[TYPE_ID]=CLIENT&" \
+                                    f"FIELDS[SOURCE_ID]=SELF&" \
+                                    f"PARAMS[REGISTER_SONET_EVENT]&" \
+                                    f"FIELDS[LAST_NAME]={name.split()[0]}"
 
-                                if name:
-                                    name = name.title()
-                                else:
-                                    name = "None"
+                            if len(name.split()) > 2:
+                                s_req += f"&FIELDS[NAME]={name.split()[1]}&" \
+                                         f"FIELDS[SECOND_NAME]={' '.join(name.split()[2:])}"
 
-                                if len(js["Contacts"][0]["Emails"]):
-                                    email = js["Contacts"][0]["Emails"][0]["Address"]
-                                if len(js["Contacts"][0]["Phones"]):
-                                    number = js["Contacts"][0]["Phones"][0]["Number"]
-                                    if js["Contacts"][0]["Phones"][0]["AdditionalNumber"]:
-                                        number += f'({js["Contacts"][0]["Phones"][0]["AdditionalNumber"]})'
+                            if email.strip():
+                                s_req += f"&FIELDS[EMAIL][0][VALUE]=WORK&FIELDS[EMAIL][0][VALUE]={email}"
+                            if phone.strip():
+                                s_req += f"&FIELDS[PHONE][0][VALUE]=WORK&FIELDS[PHONE][0][VALUE]={phone}"
 
-                                s_message = f"Необходимо создать контакт " \
-                                            f"Имя: {name:40}" \
-                                            f"email: {email:35}" \
-                                            f"Номер телефона: {number}"
+                            if email != phone:
+                                bitrix.GET(bitrix.URL_bitrix + "crm.contact.add?")
+                            else:
+                                print(row[0], "не хватает данных")
 
-                                if email == number:
-                                    s_message = ""
-
-                            print(
-                                s_message if s_message else row[1] + " not found -")
-                except Exception:
-                    print(Exception)
             """
             for row in cur.cursor.fetchall():
                 js = json.loads(row[7])
