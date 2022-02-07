@@ -97,7 +97,7 @@ class ApiBilly:
     def UpdateTimeStamp(self, NextTimeStamp):
         """
         Метод для обновления метки последнего времени в параметрах запроса и БД
-        :param str NextTimeStamp: Метка времени
+        :param int NextTimeStamp: Метка времени
         """
 
         self.REQ_PARAMS['from'] = NextTimeStamp
