@@ -46,6 +46,10 @@ class DAL:
             self.SELECT(sql_query)
         return self.cursor.rowcount
 
+    def Upd(self, isUpdate, tablename, field_value, where=None):
+        self.EXECUTE(f"{'UPDATE' if isUpdate else 'INSERT INTO'} {tablename} SET {field_value}" +
+                     f" WHERE {where}" if isUpdate and where else "")
+
     def SELECT(self, sql_query):
         """
         Запрос SELECT к таблице в БД
