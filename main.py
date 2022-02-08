@@ -100,34 +100,43 @@ for i in range(len(parameters)):
                                 # Сравнение версий ПП
                                 if np.int64(oldVers) < np.int64(params['VersPs']):
                                     # Строка обновления ПП в таблице
-                                    s_exec = f"UPDATE prospectivesales SET " \
-                                             f"Version = \"{params['VersPs']}\", " \
-                                             f"TypeSale = {params['TypePs']}, " \
-                                             f"INN = \"{params['InnOrg']}\", " \
-                                             f"KPP = {params['KppOrg']}, " \
-                                             f"IdOrganization = \"{params['IdOrg']}\", " \
-                                             f"ClientType = {params['TypeOrg']}, " \
-                                             f"JSON = '" \
-                                             + json.dumps(fields).replace("\\", "\\\\").replace("'", "\\\'") + \
-                                             f"' WHERE idProspectivesales = '{params['idPs']}'"
+                                    upd_fields = {
+                                        "Version": params['VersPs'],
+                                        "TypeSale": params['TypePs'],
+                                        "INN": params['InnOrg'],
+                                        "KPP": params['KppOrg'],
+                                        "IdOrganization": params['IdOrg'],
+                                        "ClientType": params['TypeOrg'],
+                                        "JSON": json.dumps(fields).replace("\\", "\\\\").replace("'", "\\\'"),
+                                    }
+                                    cur.Upd(
+                                        True,
+                                        "prospectivesales",
+                                        ", ".join([f"{key}= '{value}'" for key, value in upd_fields]),
+                                        f"idProspectivesales = '{params['idPs']}'"
+                                    )
+                                    j += 1
                             else:
                                 # Строка записи ПП в таблицу
-                                s_exec = f"INSERT INTO prospectivesales SET  " \
-                                         f"idProspectivesales = \"{params['idPs']}\", " \
-                                         f"Version = \"{params['VersPs']}\", " \
-                                         f"TypeSale = {params['TypePs']}, " \
-                                         f"INN = \"{params['InnOrg']}\", " \
-                                         f"KPP = {params['KppOrg']}, " \
-                                         f"IdOrganization = \"{params['IdOrg']}\", " \
-                                         f"ClientType = {params['TypeOrg']}, " \
-                                         f"JSON = '" + json.dumps(fields).replace("\\", "\\\\").replace("'",
-                                                                                                        "\\\'") + "'"
+                                ins_fields = {
+                                    "idProspectivesales": params['idPs'],
+                                    "Version": params['VersPs'],
+                                    "TypeSale": params['TypePs'],
+                                    "INN": params['InnOrg'],
+                                    "KPP": params['KppOrg'],
+                                    "IdOrganization": params['IdOrg'],
+                                    "ClientType": params['TypeOrg'],
+                                    "JSON": json.dumps(fields).replace("\\", "\\\\").replace("'", "\\\'") + "'"
+                                }
+                                cur.Upd(
+                                    False,
+                                    "prospectivesales",
+                                    ", ".join([f"{key}= '{value}'" for key, value in ins_fields])
+                                )
+                                j += 1
                             # Проверка на наличие запроса
                             # print(s_exec)
-                            if s_exec:
-                                cur.EXECUTE(s_exec)  # Выполнение запроса к БД
-                                j += 1
-                                print(f"Обработано {j} новостей")
+                            print(f"Обработано {j} новостей")
                     resp_api.UpdateTimeStamp(News["NextTimestamp"])  # Обновление параметров запроса
 
                     i += 1
@@ -180,6 +189,9 @@ for i in range(len(parameters)):
         elif ch == 3:
             # Выбор всех строк, где Тип клиента 3
             table = cur.SELECT("Select * from Clients where ClientType = 3")
+            exist = 0
+            add = 0
+            upd = 0
             for row in table.fetchall():
                 # Проверка заполненности ReqId в таблице
                 if not row[4]:
@@ -188,10 +200,13 @@ for i in range(len(parameters)):
                                                    f"?select[]=ENTITY_ID&filter[RQ_INN]={row[1]}")
                     # Если данные найдены, то внести информацию в БД
                     if bitrix.result.json()['total'] == 1:
-                        cur.EXECUTE(f"UPDATE clients SET "
-                                    f"ReqId = '{bitrix.result.json()['result'][0]['ENTITY_ID']}' "
-                                    f"WHERE guid = '{row[0]}'")
+                        cur.Upd(
+                            True,
+                            "clients",
+                            f"ReqId = '{bitrix.result.json()['result'][0]['ENTITY_ID']}'",
+                            f"guid = '{row[0]}'")
                         print(f"{row[1]} have ReqId: {bitrix.result.json()['result'][0]['ENTITY_ID']}")
+
                     # Если данные не найдены, то необходимо его создать
                     else:
                         # Выбираем ПП по идентификатору организации GUID == idOrganization
@@ -200,42 +215,76 @@ for i in range(len(parameters)):
 
                         # Наименование организации
                         name = str(js["Organization"]["Name"]).title()
+                        email = ""
+                        phone = ""
 
+                        cont_fields = {
+                            "OPENED": "Y",
+                            "ASSIGNED_BY_ID": 1,
+                            "TYPE_ID": "CLIENT",
+                            "SOURCE_ID": "SELF",
+                            "LAST_NAME": name.split()[0]
+                        }
+                        s_req = ""
                         # Если есть контакты, то
                         if len(js["Contacts"]):
                             # Заполнение ФИО, Email и номера телефона
-                            s_req = f"FIELDS[OPENED]=Y&" \
-                                    f"FIELDS[ASSIGNED_BY_ID]=1&" \
-                                    f"FIELDS[TYPE_ID]=CLIENT&" \
-                                    f"FIELDS[SOURCE_ID]=SELF&" \
-                                    f"PARAMS[REGISTER_SONET_EVENT]&" \
-                                    f"FIELDS[LAST_NAME]={name.split()[0]}"
                             # Проверка на наличие имени и отчества
                             if len(name.split()) > 2:
-                                s_req += f"&FIELDS[NAME]={name.split()[1]}&" \
-                                         f"FIELDS[SECOND_NAME]={' '.join(name.split()[2:])}"
+                                cont_fields["NAME"] = {name.split()[1]}
+                                cont_fields["SECOND_NAME"] = ' '.join(name.split()[2:])
 
-                            email = ""
                             if len(js["Contacts"][0]["Emails"]):
                                 email = js['Contacts'][0]['Emails'][0]['Address']
-                                s_req += f"&FIELDS[EMAIL][0][VALUE]=WORK&FIELDS[EMAIL][0][VALUE]={email}"
-                            phone = ""
+                                cont_fields["EMAIL][0][VALUE_TYPE"] = "WORK"
+                                cont_fields["EMAIL][0][VALUE"] = email
+
                             if len(js["Contacts"][0]["Phones"]):
                                 phone = js['Contacts'][0]['Phones'][0]['Number']
-                                s_req += f"&FIELDS[PHONE][0][VALUE]=WORK&FIELDS[PHONE][0][VALUE]={phone}"
+                                cont_fields["PHONE][0][VALUE_TYPE"] = "WORK"
+                                cont_fields["PHONE][0][VALUE"] = phone
                                 # if js["Contacts"][0]["Phones"][0]["AdditionalNumber"]:
                                 #     phone += f'({js["Contacts"][0]["Phones"][0]["AdditionalNumber"]})'
 
-                            print(f"{name:40}|{email:35}|{phone}")
-                            method = bitrix.FindContact(email, phone)
-                            if method == 0:
-                                print(f"{name} добавлен в контакты")
-                                bitrix.GET(f"{bitrix.URL_bitrix}crm.contact.add?{s_req}")
-                            elif method == 3:
-                                print(f"{name} уже существует поиск по {phone:15} | {email}")
-                            elif method > 3:
-                                print(f"NEED UPDATE {name}")
-                                # s_req = f"{bitrix.URL_bitrix}crm.contact.update?{s_req}&id={method}"
+                        method = bitrix.FindContact(name, email, phone)
+                        if method == 0:
+                            s_req = f"{bitrix.URL_bitrix}crm.contact.add?PARAMS[REGISTER_SONET_EVENT]&" + \
+                                    '&'.join([f'fields[{key}]={value}' for key, value in cont_fields.items()])
+                            bitrix.GET(s_req)
+
+                            req_fields = {
+                                "ENTITY_TYPE_ID": 3,
+                                "ENTITY_ID": bitrix.result.json()['result'],
+                                "PRESET_ID": 5,
+                                "RQ_INN": row[1],
+                                "RQ_NAME": name,
+                                "RQ_LAST_NAME": name.split()[0],
+                                "UF_CRM_BILLY": row[0],
+                                "NAME": "Физ. лицо",
+                                "ACTIVE": "Y"
+                            }
+                            if len(name.split()) > 2:
+                                req_fields["RQ_FIRST_NAME"] = name.split()[1]
+                                req_fields["RQ_SECOND_NAME"] = ' '.join(name.split()[2:])
+
+                            s_req = f"{bitrix.URL_bitrix}crm.requisite.add?" + \
+                                    '&'.join([f'fields[{key}]={value}' for key, value in req_fields.items()])
+                            bitrix.GET(s_req)
+                            cur.Upd(
+                                True,
+                                "clients",
+                                f"ReqId = {bitrix.result.json()['result']}",
+                                f"guid = '{row[0]}'"
+                            )
+                            add += 1
+                            print(f"{name} добавлен в контакты ID: {bitrix.result.json()['result']}")
+                        elif method == 3:
+                            exist += 1
+                            print(f"{name} уже существует поиск по {phone:15} | {email}")
+                        elif method > 3:
+                            upd += 1
+                            print(f"NEED UPDATE {name}")
+                            # s_req = f"{bitrix.URL_bitrix}crm.contact.update?{s_req}&id={method}"
 
                             # print(s_req)
                             # bitrix.GET(s_req)
@@ -243,23 +292,7 @@ for i in range(len(parameters)):
                             #     print(row[0], "не хватает данных")
                         else:
                             print(f"У организации {name} - {row[0]} нет контактов")
-                            """
-                            for row in cur.cursor.fetchall():
-                                js = json.loads(row[7])
-                                org = js["Organization"]
-                
-                                s = f"INSERT INTO clients SET Inn = '{org['Inn']}', " \
-                                    f"Kpp = %kpp, Type = {org['Type']}, " \
-                                    f"Guid = '{org['ClientId']}'"
-                                s.replace("%kpp", "'" + org["Kpp"] + "'" if org["Kpp"] else "Null")
-                                if js["Organization"]["Type"] < 3:
-                                    print(js["Organization"])
-                                    res = bitrix.GetInfo(js["Organization"]["Inn"])
-                                    if res.text:
-                                        print(res.json())
-                                time.sleep(1.1)
-                            """
-
+            print(f"Add {add}\nNeed update {upd}\nExist {exist}")
         elif ch == 4:
             cur.EXECUTE("INSERT INTO clients (guid, inn, kpp, ClientType)"
                         "SELECT p.IdOrganization, p.INN, p.KPP, p.ClientType "
@@ -272,6 +305,6 @@ for i in range(len(parameters)):
         else:
             print("Такого варианта нет")
     except Exception as mes:
-        print("Something is wrong ", mes.args[0])
+        print("Something is wrong ", mes.args[0], mes.args[1])
     # os.system("pause")
 print("Bye-Bye")
