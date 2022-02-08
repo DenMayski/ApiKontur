@@ -221,33 +221,35 @@ for i in range(len(parameters)):
                             if len(name.split()) > 2:
                                 s_req += f"&FIELDS[NAME]={name.split()[1]}&" \
                                          f"FIELDS[SECOND_NAME]={' '.join(name.split()[2:])}"
-
                             if email.strip():
                                 s_req += f"&FIELDS[EMAIL][0][VALUE]=WORK&FIELDS[EMAIL][0][VALUE]={email}"
                             if phone.strip():
                                 s_req += f"&FIELDS[PHONE][0][VALUE]=WORK&FIELDS[PHONE][0][VALUE]={phone}"
 
-                            if email != phone:
-                                bitrix.GET(bitrix.URL_bitrix + "crm.contact.add?")
-                            else:
-                                print(row[0], "не хватает данных")
+                            if email != phone and len(name.split()) > 2:
+                                print(f"{name:40}|{email:35}|{phone}")
+                                s_req = f"{bitrix.URL_bitrix}crm.contact.add?{s_req}"
+                                # print(s_req)
+                                # bitrix.GET(s_req)
+                            # else:
+                            #     print(row[0], "не хватает данных")
 
-            """
-            for row in cur.cursor.fetchall():
-                js = json.loads(row[7])
-                org = js["Organization"]
-
-                s = f"INSERT INTO clients SET Inn = '{org['Inn']}', " \
-                    f"Kpp = %kpp, Type = {org['Type']}, " \
-                    f"Guid = '{org['ClientId']}'"
-                s.replace("%kpp", "'" + org["Kpp"] + "'" if org["Kpp"] else "Null")
-                if js["Organization"]["Type"] < 3:
-                    print(js["Organization"])
-                    res = bitrix.GetInfo(js["Organization"]["Inn"])
-                    if res.text:
-                        print(res.json())
-                time.sleep(1.1)
-            """
+                            """
+                            for row in cur.cursor.fetchall():
+                                js = json.loads(row[7])
+                                org = js["Organization"]
+                
+                                s = f"INSERT INTO clients SET Inn = '{org['Inn']}', " \
+                                    f"Kpp = %kpp, Type = {org['Type']}, " \
+                                    f"Guid = '{org['ClientId']}'"
+                                s.replace("%kpp", "'" + org["Kpp"] + "'" if org["Kpp"] else "Null")
+                                if js["Organization"]["Type"] < 3:
+                                    print(js["Organization"])
+                                    res = bitrix.GetInfo(js["Organization"]["Inn"])
+                                    if res.text:
+                                        print(res.json())
+                                time.sleep(1.1)
+                            """
 
         elif ch == 4:
             cur.EXECUTE("INSERT INTO clients (guid, inn, kpp, ClientType)"
