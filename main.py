@@ -1,13 +1,12 @@
 import datetime
 import json
-import time
 import sys
+# import time
 # import os
 # import traceback
 
 import numpy as np
 
-# import time
 from API import ApiBilly, ApiBitrix
 from DAL import DAL
 
@@ -179,61 +178,71 @@ for i in range(len(parameters)):
                 pass
 
         elif ch == 3:
+            # Выбор всех строк, где Тип клиента 3
             table = cur.SELECT("Select * from Clients where ClientType = 3")
-
             for row in table.fetchall():
+                # Проверка заполненности ReqId в таблице
                 if not row[4]:
+                    # Запрос битриксу на поиск клиента по ИНН
                     bitrix.GET(bitrix.URL_bitrix + f"/crm.requisite.list"
                                                    f"?select[]=ENTITY_ID&filter[RQ_INN]={row[1]}")
-                    time.sleep(0.6)
+                    # Если данные найдены, то внести информацию в БД
                     if bitrix.result.json()['total'] == 1:
                         cur.EXECUTE(f"UPDATE clients SET "
-                                    f"ReqID = '{bitrix.result.json()['result'][0]['ENTITY_ID']}' "
+                                    f"ReqId = '{bitrix.result.json()['result'][0]['ENTITY_ID']}' "
                                     f"WHERE guid = '{row[0]}'")
-                        print(row[1], "in database +")
+                        print(f"{row[1]} have ReqId: {bitrix.result.json()['result'][0]['ENTITY_ID']}")
+                    # Если данные не найдены, то необходимо его создать
                     else:
+                        # Выбираем ПП по идентификатору организации GUID == idOrganization
                         cur.SELECT(f"SELECT * FROM prospectivesales WHERE idOrganization = '{row[0]}'")
-                        rowProspective = cur.cursor.fetchone()
+                        js = json.loads(cur.cursor.fetchone()[7])
 
-                        js = json.loads(rowProspective[7])
-                        s_message = ""
+                        # Наименование организации
+                        name = str(js["Organization"]["Name"]).title()
 
+                        # Если есть контакты, то
                         if len(js["Contacts"]):
-                            name = str(js["Organization"]["Name"]).title()
-                            email = ""
-                            phone = ""
-
-                            if len(js["Contacts"][0]["Emails"]):
-                                email = js["Contacts"][0]["Emails"][0]["Address"]
-
-                            if len(js["Contacts"][0]["Phones"]):
-                                phone = js["Contacts"][0]["Phones"][0]["Number"]
-                                if js["Contacts"][0]["Phones"][0]["AdditionalNumber"]:
-                                    phone += f'({js["Contacts"][0]["Phones"][0]["AdditionalNumber"]})'
-
+                            # Заполнение ФИО, Email и номера телефона
                             s_req = f"FIELDS[OPENED]=Y&" \
                                     f"FIELDS[ASSIGNED_BY_ID]=1&" \
                                     f"FIELDS[TYPE_ID]=CLIENT&" \
                                     f"FIELDS[SOURCE_ID]=SELF&" \
                                     f"PARAMS[REGISTER_SONET_EVENT]&" \
                                     f"FIELDS[LAST_NAME]={name.split()[0]}"
-
+                            # Проверка на наличие имени и отчества
                             if len(name.split()) > 2:
                                 s_req += f"&FIELDS[NAME]={name.split()[1]}&" \
                                          f"FIELDS[SECOND_NAME]={' '.join(name.split()[2:])}"
-                            if email.strip():
-                                s_req += f"&FIELDS[EMAIL][0][VALUE]=WORK&FIELDS[EMAIL][0][VALUE]={email}"
-                            if phone.strip():
-                                s_req += f"&FIELDS[PHONE][0][VALUE]=WORK&FIELDS[PHONE][0][VALUE]={phone}"
 
-                            if email != phone and len(name.split()) > 2:
-                                print(f"{name:40}|{email:35}|{phone}")
-                                s_req = f"{bitrix.URL_bitrix}crm.contact.add?{s_req}"
-                                # print(s_req)
-                                # bitrix.GET(s_req)
+                            email = ""
+                            if len(js["Contacts"][0]["Emails"]):
+                                email = js['Contacts'][0]['Emails'][0]['Address']
+                                s_req += f"&FIELDS[EMAIL][0][VALUE]=WORK&FIELDS[EMAIL][0][VALUE]={email}"
+                            phone = ""
+                            if len(js["Contacts"][0]["Phones"]):
+                                phone = js['Contacts'][0]['Phones'][0]['Number']
+                                s_req += f"&FIELDS[PHONE][0][VALUE]=WORK&FIELDS[PHONE][0][VALUE]={phone}"
+                                # if js["Contacts"][0]["Phones"][0]["AdditionalNumber"]:
+                                #     phone += f'({js["Contacts"][0]["Phones"][0]["AdditionalNumber"]})'
+
+                            print(f"{name:40}|{email:35}|{phone}")
+                            method = bitrix.FindContact(email, phone)
+                            if method == 0:
+                                print(f"{name} добавлен в контакты")
+                                bitrix.GET(f"{bitrix.URL_bitrix}crm.contact.add?{s_req}")
+                            elif method == 3:
+                                print(f"{name} уже существует поиск по {phone:15} | {email}")
+                            elif method > 3:
+                                print(f"NEED UPDATE {name}")
+                                # s_req = f"{bitrix.URL_bitrix}crm.contact.update?{s_req}&id={method}"
+
+                            # print(s_req)
+                            # bitrix.GET(s_req)
                             # else:
                             #     print(row[0], "не хватает данных")
-
+                        else:
+                            print(f"У организации {name} - {row[0]} нет контактов")
                             """
                             for row in cur.cursor.fetchall():
                                 js = json.loads(row[7])
