@@ -1,3 +1,5 @@
+import time
+
 import requests
 
 from DAL import DAL
@@ -182,6 +184,27 @@ class ApiBitrix:
     def GetInfo(self, inn):
         return self.GET(self.URL_dadata + f"?inn={inn}")
 
+    def FindContact(self, email=None, phone=None):
+        """
+        Метод поиска контакта в Битрикс24
+        :param str email: Адрес электронной почты
+        :param dict phone: Номер телефона
+        :return: Возвращает значение 0 (не найден), 3 (найден) или id контакта (не все данные есть)
+        :rtype: int
+        """
+        #
+        isFind = 0
+        if phone:
+            self.GET(self.URL_bitrix + f"crm.contact.list?select[]=PHONE&filter[PHONE]={phone}")
+            isFind += 1 if self.result.json()["total"] else 0
+        if email:
+            self.GET(self.URL_bitrix + f"crm.contact.list?select[]=EMAIL&filter[EMAIL]={email}")
+            isFind += 2 if isFind or self.result.json()["total"] else 0
+        if isFind == 0 or isFind == 3:
+            return isFind
+        else:
+            return self.result.json()["result"][0]['ID']
+
     def GET(self, url, param=None):
         """
         Метод для GET запроса
@@ -190,5 +213,5 @@ class ApiBitrix:
         :return:  Возвращает результат запроса
         :rtype: requests.Response
         """
+        time.sleep(0.6)
         self.result = requests.get(url=url, headers=self.Headers, params=param, timeout=30)
-        return self.result
