@@ -194,19 +194,23 @@ class ApiBitrix:
         :rtype: int
         """
         #
-        is_find = 0
-        if phone:
+        is_find = False
+        if phone != email:
+            count = 0
             self.GET(self.URL_bitrix + f"crm.contact.list?select[]=PHONE&filter[PHONE]={phone}")
-            is_find += 1 if self.result.json()["total"] else 0
-        if email:
+            count += self.result.json()["total"]
             self.GET(self.URL_bitrix + f"crm.contact.list?select[]=EMAIL&filter[EMAIL]={email}")
-            is_find += 2 if is_find or self.result.json()["total"] else 0
+            count += self.result.json()["total"]
+            s_req = f"crm.contact.list?filter[LAST_NAME]={name.split()[0]}"
+            if len(name.split()) > 1:
+                s_req += f"&filter[NAME]={name.split()[1]}"
+                if len(name.split()) > 2:
+                    s_req += f"&filter[SECOND_NAME]={name.split()[2]}"
+            self.GET(self.URL_bitrix + s_req)
+            count += self.result.json()["total"]
+            is_find = bool(count)
 
-        if is_find == 0 or is_find == 3:
-            return is_find
-        else:
-            if name:
-                return int(self.result.json()["result"][0]['ID'])
+        return is_find
 
     def GET(self, url, param=None):
         """

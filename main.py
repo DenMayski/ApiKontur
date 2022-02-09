@@ -196,17 +196,21 @@ for i in range(len(parameters)):
                 # Проверка заполненности ReqId в таблице
                 if not row[4]:
                     # Запрос битриксу на поиск клиента по ИНН
-                    bitrix.GET(bitrix.URL_bitrix + f"/crm.requisite.list"
-                                                   f"?select[]=ENTITY_ID&filter[RQ_INN]={row[1]}")
+                    bitrix.GET(bitrix.URL_bitrix + "/crm.requisite.list?"
+                                                   "filter[ENTITY_TYPE_ID]=3&"
+                                                   f"filter[RQ_INN]={row[1]}")
                     # Если данные найдены, то внести информацию в БД
-                    if bitrix.result.json()['total'] == 1:
+                    if bitrix.result.json()['total'] > 0:
                         cur.Upd(
                             True,
                             "clients",
-                            f"ReqId = '{bitrix.result.json()['result'][0]['ENTITY_ID']}'",
+                            f"ReqId = '{bitrix.result.json()['result'][0]['ID']}'",
                             f"guid = '{row[0]}'")
-                        print(f"{row[1]} have ReqId: {bitrix.result.json()['result'][0]['ENTITY_ID']}")
-
+                        print(f"{row[1]} have ReqId: {bitrix.result.json()['result'][0]['ID']}")
+                        if bitrix.result.json()['total'] > 1:
+                            f = open("Need_to_see.txt", "a")
+                            f.writelines(f"\n\n{row[0]:30} | {row[1]:15} HAVE MANY REQ\n\n")
+                            f.close()
                     # Если данные не найдены, то необходимо его создать
                     else:
                         # Выбираем ПП по идентификатору организации GUID == idOrganization
@@ -214,10 +218,16 @@ for i in range(len(parameters)):
                         js = json.loads(cur.cursor.fetchone()[7])
 
                         # Наименование организации
-                        name = str(js["Organization"]["Name"]).title()
+                        if resp_api.ClientsFind(js["Organization"]["Inn"], "", 3):
+                            name = resp_api.result.json()["Name"]
+                        else:
+                            name = str(js["Organization"]["Name"]).title()
+
                         email = ""
                         phone = ""
+                        s_req = ""
 
+                        # Словарь с полями контакта
                         cont_fields = {
                             "OPENED": "Y",
                             "ASSIGNED_BY_ID": 1,
@@ -225,73 +235,76 @@ for i in range(len(parameters)):
                             "SOURCE_ID": "SELF",
                             "LAST_NAME": name.split()[0]
                         }
-                        s_req = ""
-                        # Если есть контакты, то
-                        if len(js["Contacts"]):
-                            # Заполнение ФИО, Email и номера телефона
-                            # Проверка на наличие имени и отчества
+
+                        # Проверка на наличие имени и отчество
+                        if len(name.split()) > 1:
+                            cont_fields["NAME"] = name.split()[1]
                             if len(name.split()) > 2:
-                                cont_fields["NAME"] = {name.split()[1]}
                                 cont_fields["SECOND_NAME"] = ' '.join(name.split()[2:])
 
+                        # Если есть контакты, то
+                        if len(js["Contacts"]):
+                            # Заполнение Email и номера телефона
                             if len(js["Contacts"][0]["Emails"]):
                                 email = js['Contacts'][0]['Emails'][0]['Address']
-                                cont_fields["EMAIL][0][VALUE_TYPE"] = "WORK"
-                                cont_fields["EMAIL][0][VALUE"] = email
-
                             if len(js["Contacts"][0]["Phones"]):
                                 phone = js['Contacts'][0]['Phones'][0]['Number']
-                                cont_fields["PHONE][0][VALUE_TYPE"] = "WORK"
-                                cont_fields["PHONE][0][VALUE"] = phone
-                                # if js["Contacts"][0]["Phones"][0]["AdditionalNumber"]:
-                                #     phone += f'({js["Contacts"][0]["Phones"][0]["AdditionalNumber"]})'
+                                if js["Contacts"][0]["Phones"][0]["AdditionalNumber"]:
+                                    phone += f'({js["Contacts"][0]["Phones"][0]["AdditionalNumber"]})'
 
-                        method = bitrix.FindContact(name, email, phone)
-                        if method == 0:
-                            s_req = f"{bitrix.URL_bitrix}crm.contact.add?PARAMS[REGISTER_SONET_EVENT]&" + \
-                                    '&'.join([f'fields[{key}]={value}' for key, value in cont_fields.items()])
-                            bitrix.GET(s_req)
+                        is_find = bitrix.FindContact(name, email, phone)
+                        # Если номер телефона и email в битриксе не существуют
+                        if not is_find:
+                            cont_fields["EMAIL][0][VALUE_TYPE"] = "WORK"
+                            cont_fields["EMAIL][0][VALUE"] = email
+                            cont_fields["PHONE][0][VALUE_TYPE"] = "WORK"
+                            cont_fields["PHONE][0][VALUE"] = phone
+                            add += 1
+                            print(f"{name} добавлен в контакты")
+                        else:
+                            upd += 1
+                            print(f"Пожалуйста проверьте {name}")
+                            f = open("Need_to_see.txt", "a")
+                            f.writelines(f"Имя: {name:40}| Inn: {row[1]:15}| Guid: {row[0]}\n")
+                            f.close()
 
-                            req_fields = {
-                                "ENTITY_TYPE_ID": 3,
-                                "ENTITY_ID": bitrix.result.json()['result'],
-                                "PRESET_ID": 5,
-                                "RQ_INN": row[1],
-                                "RQ_NAME": name,
-                                "RQ_LAST_NAME": name.split()[0],
-                                "UF_CRM_BILLY": row[0],
-                                "NAME": "Физ. лицо",
-                                "ACTIVE": "Y"
-                            }
+                        s_req = f"{bitrix.URL_bitrix}crm.contact.add?PARAMS[REGISTER_SONET_EVENT]&" + \
+                                '&'.join([f'fields[{key}]={value}' for key, value in cont_fields.items()])
+                        bitrix.GET(s_req)
+
+                        req_fields = {
+                            "ENTITY_TYPE_ID": 3,
+                            "ENTITY_ID": bitrix.result.json()['result'],
+                            "PRESET_ID": 5,
+                            "RQ_INN": row[1],
+                            "RQ_NAME": name,
+                            "RQ_LAST_NAME": name.split()[0],
+                            "UF_CRM_BILLY": row[0],
+                            "NAME": "Физ. лицо",
+                            "ACTIVE": "Y"
+                        }
+
+                        if len(name.split()) > 1:
+                            req_fields["RQ_FIRST_NAME"] = name.split()[1]
                             if len(name.split()) > 2:
-                                req_fields["RQ_FIRST_NAME"] = name.split()[1]
                                 req_fields["RQ_SECOND_NAME"] = ' '.join(name.split()[2:])
 
-                            s_req = f"{bitrix.URL_bitrix}crm.requisite.add?" + \
-                                    '&'.join([f'fields[{key}]={value}' for key, value in req_fields.items()])
-                            bitrix.GET(s_req)
-                            cur.Upd(
-                                True,
-                                "clients",
-                                f"ReqId = {bitrix.result.json()['result']}",
-                                f"guid = '{row[0]}'"
-                            )
-                            add += 1
-                            print(f"{name} добавлен в контакты ID: {bitrix.result.json()['result']}")
-                        elif method == 3:
-                            exist += 1
-                            print(f"{name} уже существует поиск по {phone:15} | {email}")
-                        elif method > 3:
-                            upd += 1
-                            print(f"NEED UPDATE {name}")
-                            # s_req = f"{bitrix.URL_bitrix}crm.contact.update?{s_req}&id={method}"
+                        s_req = f"{bitrix.URL_bitrix}crm.requisite.add?" + \
+                                '&'.join([f'fields[{key}]={value}' for key, value in req_fields.items()])
+                        bitrix.GET(s_req)
+                        cur.Upd(
+                            True,
+                            "clients",
+                            f"ReqId = {bitrix.result.json()['result']}",
+                            f"guid = '{row[0]}'"
+                        )
+                        # s_req = f"{bitrix.URL_bitrix}crm.contact.update?{s_req}&id={method}"
 
-                            # print(s_req)
-                            # bitrix.GET(s_req)
-                            # else:
-                            #     print(row[0], "не хватает данных")
-                        else:
-                            print(f"У организации {name} - {row[0]} нет контактов")
+                        # print(s_req)
+                        # bitrix.GET(s_req)
+                        # else:
+                        #     print(row[0], "не хватает данных")
+
             print(f"Add {add}\nNeed update {upd}\nExist {exist}")
         elif ch == 4:
             cur.EXECUTE("INSERT INTO clients (guid, inn, kpp, ClientType)"
