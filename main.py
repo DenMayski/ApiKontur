@@ -1,5 +1,6 @@
 import datetime
 import json
+import re
 import sys
 # import time
 # import os
@@ -20,7 +21,8 @@ action = {
     2: "Проверить закрытые продажи",
     3: "Получить информацию по компаниям",
     4: "Выделить организации",
-    5: "Выход"
+    5: "Выборка физиков",
+    6: "Выход"
 }
 
 s_action = '\n'.join([f"{key}) {value}" for key, value in action.items()]) + '\n'
@@ -112,7 +114,7 @@ for i in range(len(parameters)):
                                     cur.Upd(
                                         True,
                                         "prospectivesales",
-                                        ", ".join([f"{key}= '{value}'" for key, value in upd_fields]),
+                                        upd_fields,
                                         f"idProspectivesales = '{params['idPs']}'"
                                     )
                                     j += 1
@@ -128,10 +130,11 @@ for i in range(len(parameters)):
                                     "ClientType": params['TypeOrg'],
                                     "JSON": json.dumps(fields).replace("\\", "\\\\").replace("'", "\\\'") + "'"
                                 }
+                                # ХЗ ПРОВЕРЯЙ МБ БАГ
                                 cur.Upd(
                                     False,
                                     "prospectivesales",
-                                    ", ".join([f"{key}= '{value}'" for key, value in ins_fields])
+                                    ', '.join([f"{key}='{value}'" for key, value in ins_fields.items()])[:-1]
                                 )
                                 j += 1
                             # Проверка на наличие запроса
@@ -200,17 +203,20 @@ for i in range(len(parameters)):
                                                    "filter[ENTITY_TYPE_ID]=3&"
                                                    f"filter[RQ_INN]={row[1]}")
                     # Если данные найдены, то внести информацию в БД
-                    if bitrix.result.json()['total'] > 0:
+                    if bitrix.result.json()['total'] == 1:
                         cur.Upd(
                             True,
                             "clients",
                             f"ReqId = '{bitrix.result.json()['result'][0]['ID']}'",
                             f"guid = '{row[0]}'")
                         print(f"{row[1]} have ReqId: {bitrix.result.json()['result'][0]['ID']}")
-                        if bitrix.result.json()['total'] > 1:
-                            f = open("Need_to_see.txt", "a")
-                            f.writelines(f"\n\n{row[0]:30} | {row[1]:15} HAVE MANY REQ\n\n")
-                            f.close()
+                    elif bitrix.result.json()['total'] > 1:
+                        f = open("Need_to_see.txt", "a")
+                        f.writelines(f"\n\n{row[0]:30} | {row[1]:15} HAVE MANY REQ\n\n")
+                        f.close()
+                        print(f"{row[1]} уже существует")
+                        print("https://shturmanit.bitrix24.ru/crm/contact/details/" +
+                              bitrix.result.json()['result'][0]['ENTITY_ID'] + "/")
                     # Если данные не найдены, то необходимо его создать
                     else:
                         # Выбираем ПП по идентификатору организации GUID == idOrganization
@@ -252,6 +258,7 @@ for i in range(len(parameters)):
                                 if js["Contacts"][0]["Phones"][0]["AdditionalNumber"]:
                                     phone += f'({js["Contacts"][0]["Phones"][0]["AdditionalNumber"]})'
 
+                        # Поиск клиента с таким телефоном и email на битриксе
                         is_find = bitrix.FindContact(name, email, phone)
                         # Если номер телефона и email в битриксе не существуют
                         if not is_find:
@@ -263,7 +270,6 @@ for i in range(len(parameters)):
                             print(f"{name} добавлен в контакты")
                         else:
                             upd += 1
-                            print(f"Пожалуйста проверьте {name}")
                             f = open("Need_to_see.txt", "a")
                             f.writelines(f"Имя: {name:40}| Inn: {row[1]:15}| Guid: {row[0]}\n")
                             f.close()
@@ -271,7 +277,7 @@ for i in range(len(parameters)):
                         s_req = f"{bitrix.URL_bitrix}crm.contact.add?PARAMS[REGISTER_SONET_EVENT]&" + \
                                 '&'.join([f'fields[{key}]={value}' for key, value in cont_fields.items()])
                         bitrix.GET(s_req)
-
+                        print(f"https://shturmanit.bitrix24.ru/crm/contact/details/{bitrix.result.json()['result']}/")
                         req_fields = {
                             "ENTITY_TYPE_ID": 3,
                             "ENTITY_ID": bitrix.result.json()['result'],
@@ -314,6 +320,35 @@ for i in range(len(parameters)):
 
             print(f"На данный момент количество организаций в БД: {cur.row_count('Clients')}")
         elif ch == 5:
+            id = 0
+            while True:
+                bitrix.GET(bitrix.URL_bitrix + f"/crm.requisite.list?filter[ENTITY_TYPE_ID]=3&start={id}")
+                if "next" in bitrix.result.json():
+                    for client in bitrix.result.json()['result']:
+                        if not cur.row_count(f"SELECT * FROM physic WHERE ID = '{client['ID']}'", False):
+                            upd_fields = {
+                                'id': client['ID'],
+                                'inn': client['RQ_INN'],
+                                'name': f"{client['RQ_LAST_NAME']} "
+                                        f"{client['RQ_FIRST_NAME']} "
+                                        f"{client['RQ_SECOND_NAME']}",
+                                'Entity_id': client['ENTITY_ID'],
+                            }
+                            if client['UF_CRM_BILLY']:
+                                pattern = "[a-z\d]{8}-[a-z\d]{4}-[a-z\d]{4}-[a-z\d]{4}-[a-z\d]{12}"
+                                res = re.findall(pattern, client['UF_CRM_BILLY'])
+                                upd_fields['billyid'] = res[0] if res else ""
+                            cur.Upd(
+                                False,
+                                "physic",
+                                upd_fields
+                            )
+                            print("Данные занесены Id - ", client['ID'])
+
+                    id = bitrix.result.json()['next']
+                else:
+                    break
+        elif ch == 6:
             break
         else:
             print("Такого варианта нет")

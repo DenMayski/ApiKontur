@@ -40,6 +40,7 @@ class DAL:
         :return: количество строк
         :rtype: int
         """
+
         if isTable:
             self.SELECT_ALL(sql_query)
         else:
@@ -47,8 +48,20 @@ class DAL:
         return self.cursor.rowcount
 
     def Upd(self, isUpdate, tablename, field_value, where=None):
-        self.EXECUTE(f"{'UPDATE' if isUpdate else 'INSERT INTO'} {tablename} SET {field_value}" +
-                     f" WHERE {where}" if isUpdate and where else "")
+        """
+        Метод на запись или обновление данных
+        :param bool isUpdate: Является ли запрос - запросом на обновление
+        :param str tablename: Название таблицы
+        :param str|dict field_value: Поля и значения под запись
+        :param str where: Условие по которому ведется запись
+        """
+        if type(field_value) is dict:
+            field_value = ', '.join([f"{key}='{value}'" for key, value in field_value.items()])
+
+        if isUpdate:
+            self.EXECUTE(f"UPDATE {tablename} SET {field_value} {f'WHERE {where}' if where else ''}")
+        else:
+            self.EXECUTE(f"INSERT INTO {tablename} SET {field_value}")
 
     def SELECT(self, sql_query):
         """
