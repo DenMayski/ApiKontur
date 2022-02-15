@@ -221,4 +221,9 @@ class ApiBitrix:
         :rtype: requests.Response
         """
         time.sleep(0.6)
-        self.result = requests.get(url=url, headers=self.Headers, params=param, timeout=30)
+        self.result = requests.get(url=self.URL_bitrix + url, headers=self.Headers, params=param, timeout=30)
+
+    @staticmethod
+    def GET_dadata(param):
+        time.sleep(0.5)
+        return requests.get(url=ApiBitrix.URL_dadata, params=param, timeout=30).json()
