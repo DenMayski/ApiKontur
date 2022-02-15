@@ -26,11 +26,19 @@ class DAL:
         Метод для запроса на изменение таблицы
     """
 
-    # Коннектор к базе mysql
-    con = pymysql.connect(host='localhost', user='root', password='Fish_Warden99', database='shturman_it')
+    def __init__(self):
+        try:
+            self.con = pymysql.connect(host='localhost', user='root', password='Fish_Warden99', database='shturman_it')
+        except pymysql.err.MySQLError:
+            self.cursor = None
+            print("Ошибка подключения к БД")
+        else:
+            self.cursor = self.con.cursor()
 
+    # Коннектор к базе mysql
+    con = None
     # Курсор для работы
-    cursor = con.cursor()
+    cursor = None
 
     def row_count(self, sql_query, isTable=True):
         """
