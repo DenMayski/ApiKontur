@@ -11,11 +11,7 @@ import numpy as np
 from API import ApiBilly, ApiBitrix
 from DAL import DAL
 
-try:
-    cur = DAL()  # Экземпляр класса DAL для работы с БД
-except Exception:
-    print("Ошибка подключения к БД")
-    cur = False
+cur = DAL()  # Экземпляр класса DAL для работы с БД
 
 if cur:
     resp_api = ApiBilly()  # Экземпляр класса API для работы с Api
@@ -28,7 +24,9 @@ if cur:
         3: "Получить информацию по компаниям",
         4: "Выделить организации",
         5: "Выборка физиков",
-        6: "Выход"
+        6: "Исправление неправильных реквизитов",
+        7: "Выборка компаний",
+        8: "Выход"
     }
 
     s_action = '\n'.join([f"{key}) {value}" for key, value in action.items()]) + '\n'
@@ -38,7 +36,7 @@ if cur:
             parameters.append(input(s_action))
             # Если значение целое число и в промежутке от 1 до 5, то программа идет дальше
             if parameters[0].isdigit():
-                if 0 < int(parameters[0]) < len(action.keys())+1:
+                if 0 < int(parameters[0]) < len(action.keys()) + 1:
                     break
             print(f"Значение <{parameters.pop()}> не корректно, попробуйте ввести значение заново\n")
 
@@ -50,7 +48,7 @@ if cur:
                 parameters[i] = input(s_action)
                 # Если значение целое число и в промежутке от 1 до 5, то программа идет дальше
                 if parameters[i].isdigit():
-                    if 0 < int(parameters[i]) < len(action.keys())+1:
+                    if 0 < int(parameters[i]) < len(action.keys()) + 1:
                         break
 
         ch = int(parameters[i])
@@ -196,9 +194,9 @@ if cur:
                     # Проверка заполненности ReqId в таблице
                     if not row[4]:
                         # Запрос битриксу на поиск клиента по ИНН
-                        bitrix.GET(bitrix.URL_bitrix + "/crm.requisite.list?"
-                                                       "filter[ENTITY_TYPE_ID]=3&"
-                                                       f"filter[RQ_INN]={row[1]}")
+                        bitrix.GET(f"crm.requisite.list?"
+                                   f"filter[ENTITY_TYPE_ID]=3&"
+                                   f"filter[RQ_INN]={row[1]}")
                         # Если данные найдены, то внести информацию в БД
                         if bitrix.result.json()['total'] == 1:
                             Req = bitrix.result.json()['result'][0]
@@ -272,7 +270,7 @@ if cur:
                                 f.writelines(f"Имя: {name:40}| Inn: {row[1]:15}| Guid: {row[0]}\n")
                                 f.close()
 
-                            s_req = f"{bitrix.URL_bitrix}crm.contact.add?PARAMS[REGISTER_SONET_EVENT]&" + \
+                            s_req = f"crm.contact.add?PARAMS[REGISTER_SONET_EVENT]&" + \
                                     '&'.join([f'fields[{key}]={value}' for key, value in cont_fields.items()])
                             bitrix.GET(s_req)
                             print(
@@ -294,7 +292,7 @@ if cur:
                                 if len(name.split()) > 2:
                                     req_fields["RQ_SECOND_NAME"] = ' '.join(name.split()[2:])
 
-                            s_req = f"{bitrix.URL_bitrix}crm.requisite.add?" + \
+                            s_req = f"crm.requisite.add?" + \
                                     '&'.join([f'fields[{key}]={value}' for key, value in req_fields.items()])
                             bitrix.GET(s_req)
                             cur.Upd(
@@ -321,13 +319,13 @@ if cur:
             elif ch == 5:
                 next_id = 0
                 while True:
-                    bitrix.GET(bitrix.URL_bitrix + f"/crm.requisite.list?filter[ENTITY_TYPE_ID]=3&start={next_id}")
-                    if "next" in bitrix.result.json():
-                        for client in bitrix.result.json()['result']:
-                            if int(client['PRESET_ID']) != 3:
-                                print("https://shturmanit.bitrix24.ru/crm/contact/details/" +
-                                      client['ENTITY_ID'] + "/")
-                            continue
+                    bitrix.GET(f"crm.requisite.list?filter[ENTITY_TYPE_ID]=3&start={next_id}")
+                    for client in bitrix.result.json()['result']:
+                        if int(client['PRESET_ID']) != 5:
+                            print("https://shturmanit.bitrix24.ru/crm/contact/details/" +
+                                  client['ENTITY_ID'] + "/")
+
+                        if cur.row_count(f"SELECT * FROM physic WHERE Id = {client['ID']}", False) == 0:
                             if not cur.row_count(f"SELECT * FROM physic WHERE ID = '{client['ID']}'", False):
                                 upd_fields = {
                                     'id': client['ID'],
@@ -347,11 +345,100 @@ if cur:
                                     upd_fields
                                 )
                                 print("Данные занесены Id - ", client['ID'])
-
+                    if "next" in bitrix.result.json():
                         next_id = bitrix.result.json()['next']
                     else:
                         break
             elif ch == 6:
+                next_id = 0
+                # Цикл на удаление реквизитов контактов созданных по шаблону "Организация"
+                while True:
+                    bitrix.GET(f"crm.requisite.list?"
+                               f"filter[ENTITY_TYPE_ID]=3&"
+                               f"filter[PRESET_ID]=1&"
+                               f"select[]=ID&"
+                               f"start = {next_id}")
+                    res = bitrix.result
+
+                    for reqId in res.json()['result']:
+                        bitrix.GET(f"crm.requisite.delete?id={reqId['ID']}")
+                        print(f"Реквизит {reqId['ID']} удален")
+
+                    if "next" in res.json():
+                        next_id = bitrix.result.json()["next"]
+                    else:
+                        break
+
+                """
+                Не работает, вопросы к битриксу
+                next_id = 0
+                # Цикл на обновление реквизитов контактов созданных по шаблону "ИП"
+                while True:
+                    bitrix.GET(f"crm.requisite.list?"
+                               f"filter[ENTITY_TYPE_ID]=3&"
+                               f"filter[PRESET_ID]=3&"
+                               f"select[]=ID&"
+                               f"start = {next_id}")
+                    res = bitrix.result
+
+                    for reqId in res.json()['result']:
+                        bitrix.GET(f"crm.requisite.update?field[PRESET_ID]=5")
+                        print(f"Реквизит {reqId['ID']} обновлен")
+
+                    if "next" in bitrix.result.json():
+                        next_id = bitrix.result.json()["next"]
+                    else:
+                        break
+                    """
+                next_id = 0
+                while True:
+                    bitrix.GET(f"crm.requisite.list?"
+                               f"filter[ENTITY_TYPE_ID]=4&"
+                               f"filter[PRESET_ID]=1&"
+                               f"filter[RQ_KPP]=&"
+                               f"start={next_id}")
+
+                    res = bitrix.result.json()
+                    for row in res["result"]:
+                        if not row["RQ_KPP"] or not row["RQ_OGRN"]:
+                            dadata = ApiBitrix.GET_dadata({"inn": row["RQ_INN"]})
+                            bitrix.GET(f"crm.requisite.update?id={row['ID']}&"
+                                       f"fields[RQ_KPP]={dadata['suggestions'][0]['data']['kpp']}&"
+                                       f"fields[RQ_OGRN]={dadata['suggestions'][0]['data']['ogrn']}")
+                            print(f"Организации {row['RQ_INN']} добавлены КПП и ОГРН")
+
+                    if "next" in res:
+                        next_id = res["next"]
+                    else:
+                        break
+            elif ch == 7:
+                next_id = 0
+                EntityID = []
+                while True:
+                    bitrix.GET(f"crm.requisite.list?filter[ENTITY_TYPE_ID]=4&filter[PRESET_ID]=1&start={next_id}")
+                    res = bitrix.result.json()
+                    for row in res['result']:
+                        ins_fields = {
+                            "id": row["ENTITY_ID"],
+                            "INN": row["RQ_INN"],
+                            "KPP": row["RQ_KPP"],
+                            "OGRN": row["RQ_OGRN"]
+                        }
+
+                        if ins_fields['id'] in EntityID:
+                            bitrix.GET(f"crm.requisite.delete?id={row['ID']}")
+                            print(f"Удален реквизит с id {row['ID']}")
+                        else:
+                            EntityID.append(ins_fields['id'])
+                            cur.Upd(False, "company", ins_fields)
+                            print(f"{row['RQ_INN']} добавлена в БД")
+
+                    if "next" in res:
+                        next_id = res['next']
+                    else:
+                        break
+
+            elif ch == 8:
                 break
             else:
                 print("Такого варианта нет")
