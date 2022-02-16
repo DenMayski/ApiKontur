@@ -184,31 +184,24 @@ class ApiBitrix:
     def GetInfo(self, inn):
         return self.GET(self.URL_dadata + f"?inn={inn}")
 
-    def FindContact(self, name, email=None, phone=None):
+    def FindContact(self, email=None, phone=None):
         """
         Метод поиска контакта в Битрикс24
-        :param str name: ФИО клиента
         :param str email: Адрес электронной почты
         :param dict phone: Номер телефона
         :return: Возвращает значение 0 (не найден), 3 (найден) или id контакта (не все данные есть)
         :rtype: int
         """
         #
-        is_find = False
         if phone != email:
             count = 0
             self.GET(self.URL_bitrix + f"crm.contact.list?select[]=PHONE&filter[PHONE]={phone}")
             count += self.result.json()["total"]
             self.GET(self.URL_bitrix + f"crm.contact.list?select[]=EMAIL&filter[EMAIL]={email}")
             count += self.result.json()["total"]
-            s_req = f"crm.contact.list?filter[LAST_NAME]={name.split()[0]}"
-            if len(name.split()) > 1:
-                s_req += f"&filter[NAME]={name.split()[1]}"
-                if len(name.split()) > 2:
-                    s_req += f"&filter[SECOND_NAME]={name.split()[2]}"
-            self.GET(self.URL_bitrix + s_req)
-            count += self.result.json()["total"]
             is_find = bool(count)
+        else:
+            is_find = True
 
         return is_find
 

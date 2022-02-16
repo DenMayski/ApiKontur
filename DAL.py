@@ -65,11 +65,11 @@ class DAL:
         """
         if type(field_value) is dict:
             field_value = ', '.join([f"{key}='{value}'" for key, value in field_value.items()])
-
-        if isUpdate:
-            self.EXECUTE(f"UPDATE {tablename} SET {field_value} {f'WHERE {where}' if where else ''}")
-        else:
-            self.EXECUTE(f"INSERT INTO {tablename} SET {field_value}")
+        # Обновление или Добавление записи в таблицу
+        self.EXECUTE(f"{'UPDATE' if isUpdate else 'INSERT INTO'} "
+                     f"{tablename} "
+                     f"SET {field_value} "
+                     f"{f'WHERE {where}' if where else ''}")
 
     def SELECT(self, sql_query):
         """

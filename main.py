@@ -1,7 +1,7 @@
 import datetime
 import json
-import re
 import sys
+# import re
 # import time
 # import os
 # import traceback
@@ -21,12 +21,11 @@ if cur:
     action = {
         1: "Проверить новости",
         2: "Проверить закрытые продажи",
-        3: "Получить информацию по компаниям",
-        4: "Выделить организации",
-        5: "Выборка физиков",
-        6: "Исправление неправильных реквизитов",
-        7: "Выборка компаний",
-        8: "Выход"
+        3: "Создать физ лица",
+        4: "Исправление неправильных реквизитов",
+        5: "Выборка компаний",
+        6: "Создание сделок",
+        7: "Выход"
     }
 
     s_action = '\n'.join([f"{key}) {value}" for key, value in action.items()]) + '\n'
@@ -57,6 +56,7 @@ if cur:
         # os.system("CLS")
 
         try:
+            # Выборка ПП
             if ch == 1:
                 print(f"Время начала: {datetime.datetime.now().strftime('%d %b - %H:%M:%S')}")
                 result_requests = []  # Список ПП
@@ -150,8 +150,15 @@ if cur:
 
                 print("Последняя метка", resp_api.REQ_PARAMS['from'])
                 print(f"Время окончания {datetime.datetime.now().strftime('%d %b - %H:%M:%S')}")
-                print('All is complete')
+                # Объединение таблиц чтобы в таблице клиенты всегда были актуальные данные
+                cur.EXECUTE("INSERT INTO clients (guid, inn, kpp, ClientType)"
+                            "SELECT p.IdOrganization, p.INN, p.KPP, p.ClientType "
+                            "FROM Clients c RIGHT JOIN prospectivesales p ON c.guid = p.IdOrganization "
+                            "WHERE c.guid IS NULL AND NOT p.IdOrganization IS null")
 
+                print(f"На данный момент количество организаций в БД: {cur.row_count('Clients')}")
+
+            # Проверка статусов ПП
             elif ch == 2:
                 completed = []  # Список завершенных ПП
                 # Перебор всех записей таблицы
@@ -184,12 +191,10 @@ if cur:
                     # cur.EXECUTE(f"DELETE FROM prospectivesales WHERE idProspectiveSales='{row}'")
                     pass
 
+            # Создание контактов с реквизитами
             elif ch == 3:
                 # Выбор всех строк, где Тип клиента 3
                 table = cur.SELECT("Select * from Clients where ClientType = 3")
-                exist = 0
-                add = 0
-                upd = 0
                 for row in table.fetchall():
                     # Проверка заполненности ReqId в таблице
                     if not row[4]:
@@ -255,26 +260,19 @@ if cur:
                                         phone += f'({js["Contacts"][0]["Phones"][0]["AdditionalNumber"]})'
 
                             # Поиск клиента с таким телефоном и email на битриксе
-                            is_find = bitrix.FindContact(name, email, phone)
+                            isFind = bitrix.FindContact(email, phone)
                             # Если номер телефона и email в битриксе не существуют
-                            if not is_find:
+                            if not isFind:
                                 cont_fields["EMAIL][0][VALUE_TYPE"] = "WORK"
                                 cont_fields["EMAIL][0][VALUE"] = email
                                 cont_fields["PHONE][0][VALUE_TYPE"] = "WORK"
                                 cont_fields["PHONE][0][VALUE"] = phone
-                                add += 1
-                                print(f"{name} добавлен в контакты")
-                            else:
-                                upd += 1
-                                f = open("Need_to_see.txt", "a")
-                                f.writelines(f"Имя: {name:40}| Inn: {row[1]:15}| Guid: {row[0]}\n")
-                                f.close()
 
-                            s_req = f"crm.contact.add?PARAMS[REGISTER_SONET_EVENT]&" + \
-                                    '&'.join([f'fields[{key}]={value}' for key, value in cont_fields.items()])
-                            bitrix.GET(s_req)
-                            print(
-                                f"https://shturmanit.bitrix24.ru/crm/contact/details/{bitrix.result.json()['result']}/")
+                            # Создание контакта в Битриксе
+                            bitrix.GET(f"crm.contact.add?PARAMS[REGISTER_SONET_EVENT]&" +
+                                       '&'.join([f'fields[{key}]={value}' for key, value in cont_fields.items()]))
+
+                            # Заполнение реквизита
                             req_fields = {
                                 "ENTITY_TYPE_ID": 3,
                                 "ENTITY_ID": bitrix.result.json()['result'],
@@ -286,163 +284,112 @@ if cur:
                                 "NAME": "Физ. лицо",
                                 "ACTIVE": "Y"
                             }
-
                             if len(name.split()) > 1:
                                 req_fields["RQ_FIRST_NAME"] = name.split()[1]
                                 if len(name.split()) > 2:
                                     req_fields["RQ_SECOND_NAME"] = ' '.join(name.split()[2:])
 
-                            s_req = f"crm.requisite.add?" + \
-                                    '&'.join([f'fields[{key}]={value}' for key, value in req_fields.items()])
-                            bitrix.GET(s_req)
+                            # Создание реквизита для контакта
+                            bitrix.GET(f"crm.requisite.add?" +
+                                       '&'.join([f'fields[{key}]={value}' for key, value in req_fields.items()]))
+                            # Обновление данных в БД
                             cur.Upd(
                                 True,
                                 "clients",
                                 f"ReqId = {bitrix.result.json()['result']}",
                                 f"guid = '{row[0]}'"
                             )
-                            # s_req = f"{bitrix.URL_bitrix}crm.contact.update?{s_req}&id={method}"
 
-                            # print(s_req)
-                            # bitrix.GET(s_req)
-                            # else:
-                            #     print(row[0], "не хватает данных")
-
-                print(f"Add {add}\nNeed update {upd}\nExist {exist}")
+            # Удаление и обновление реквизитов в битриксе
             elif ch == 4:
-                cur.EXECUTE("INSERT INTO clients (guid, inn, kpp, ClientType)"
-                            "SELECT p.IdOrganization, p.INN, p.KPP, p.ClientType "
-                            "FROM Clients c RIGHT JOIN prospectivesales p ON c.guid = p.IdOrganization "
-                            "WHERE c.guid IS NULL AND NOT p.IdOrganization IS null")
-
-                print(f"На данный момент количество организаций в БД: {cur.row_count('Clients')}")
-            elif ch == 5:
-                next_id = 0
-                while True:
-                    bitrix.GET(f"crm.requisite.list?filter[ENTITY_TYPE_ID]=3&start={next_id}")
-                    for client in bitrix.result.json()['result']:
-                        if int(client['PRESET_ID']) != 5:
-                            print("https://shturmanit.bitrix24.ru/crm/contact/details/" +
-                                  client['ENTITY_ID'] + "/")
-
-                        if cur.row_count(f"SELECT * FROM physic WHERE Id = {client['ID']}", False) == 0:
-                            if not cur.row_count(f"SELECT * FROM physic WHERE ID = '{client['ID']}'", False):
-                                upd_fields = {
-                                    'id': client['ID'],
-                                    'inn': client['RQ_INN'],
-                                    'name': f"{client['RQ_LAST_NAME']} "
-                                            f"{client['RQ_FIRST_NAME']} "
-                                            f"{client['RQ_SECOND_NAME']}",
-                                    'Entity_id': client['ENTITY_ID'],
-                                }
-                                if client['UF_CRM_BILLY']:
-                                    pattern = "[a-z\d]{8}-[a-z\d]{4}-[a-z\d]{4}-[a-z\d]{4}-[a-z\d]{12}"
-                                    res = re.findall(pattern, client['UF_CRM_BILLY'])
-                                    upd_fields['billyid'] = res[0] if res else ""
-                                cur.Upd(
-                                    False,
-                                    "physic",
-                                    upd_fields
-                                )
-                                print("Данные занесены Id - ", client['ID'])
-                    if "next" in bitrix.result.json():
-                        next_id = bitrix.result.json()['next']
-                    else:
-                        break
-            elif ch == 6:
                 next_id = 0
                 # Цикл на удаление реквизитов контактов созданных по шаблону "Организация"
                 while True:
+                    # Получение выборки Id реквизитов, созданных по шаблону "Организация"
                     bitrix.GET(f"crm.requisite.list?"
                                f"filter[ENTITY_TYPE_ID]=3&"
                                f"filter[PRESET_ID]=1&"
                                f"select[]=ID&"
                                f"start = {next_id}")
                     res = bitrix.result
-
+                    # Перебор результатов выборки
                     for reqId in res.json()['result']:
                         bitrix.GET(f"crm.requisite.delete?id={reqId['ID']}")
                         print(f"Реквизит {reqId['ID']} удален")
-
+                    # Проверка на наличие новых реквизитов
                     if "next" in res.json():
                         next_id = bitrix.result.json()["next"]
                     else:
+                        # Обнуление next_id
+                        nex_id = 0
                         break
 
-                """
-                Не работает, вопросы к битриксу
-                next_id = 0
-                # Цикл на обновление реквизитов контактов созданных по шаблону "ИП"
+                # Цикл на обновление реквизитов у которых отсутствуют КПП и ОГРН
                 while True:
-                    bitrix.GET(f"crm.requisite.list?"
-                               f"filter[ENTITY_TYPE_ID]=3&"
-                               f"filter[PRESET_ID]=3&"
-                               f"select[]=ID&"
-                               f"start = {next_id}")
-                    res = bitrix.result
-
-                    for reqId in res.json()['result']:
-                        bitrix.GET(f"crm.requisite.update?field[PRESET_ID]=5")
-                        print(f"Реквизит {reqId['ID']} обновлен")
-
-                    if "next" in bitrix.result.json():
-                        next_id = bitrix.result.json()["next"]
-                    else:
-                        break
-                    """
-                next_id = 0
-                while True:
+                    # Получение выборки реквизитов с пустым КПП
                     bitrix.GET(f"crm.requisite.list?"
                                f"filter[ENTITY_TYPE_ID]=4&"
                                f"filter[PRESET_ID]=1&"
                                f"filter[RQ_KPP]=&"
                                f"start={next_id}")
-
                     res = bitrix.result.json()
+                    # Перебор значений из выборки
                     for row in res["result"]:
-                        if not row["RQ_KPP"] or not row["RQ_OGRN"]:
-                            dadata = ApiBitrix.GET_dadata({"inn": row["RQ_INN"]})
-                            bitrix.GET(f"crm.requisite.update?id={row['ID']}&"
-                                       f"fields[RQ_KPP]={dadata['suggestions'][0]['data']['kpp']}&"
-                                       f"fields[RQ_OGRN]={dadata['suggestions'][0]['data']['ogrn']}")
-                            print(f"Организации {row['RQ_INN']} добавлены КПП и ОГРН")
+                        # Получение информации из да-даты
+                        dadata = ApiBitrix.GET_dadata({"inn": row["RQ_INN"]})
+                        # Обновление данных реквизита
+                        bitrix.GET(f"crm.requisite.update?id={row['ID']}&"
+                                   f"fields[RQ_KPP]={dadata['suggestions'][0]['data']['kpp']}&"
+                                   f"fields[RQ_OGRN]={dadata['suggestions'][0]['data']['ogrn']}")
 
+                        print(f"Организации {row['RQ_INN']} добавлены КПП и ОГРН")
+                    # Проверка на наличие новых реквизитов
                     if "next" in res:
                         next_id = res["next"]
                     else:
                         break
-            elif ch == 7:
+
+            # Удаление дублирующихся реквизитов у компаний
+            elif ch == 5:
                 next_id = 0
+                # Список сущностей
                 EntityID = []
                 while True:
                     bitrix.GET(f"crm.requisite.list?filter[ENTITY_TYPE_ID]=4&filter[PRESET_ID]=1&start={next_id}")
                     res = bitrix.result.json()
                     for row in res['result']:
-                        ins_fields = {
-                            "id": row["ENTITY_ID"],
-                            "INN": row["RQ_INN"],
-                            "KPP": row["RQ_KPP"],
-                            "OGRN": row["RQ_OGRN"]
-                        }
-
-                        if ins_fields['id'] in EntityID:
+                        # Если у сущности уже есть реквизит
+                        if row["ENTITY_ID"] in EntityID:
+                            # Удаляем дубликаты из битрикса
                             bitrix.GET(f"crm.requisite.delete?id={row['ID']}")
                             print(f"Удален реквизит с id {row['ID']}")
                         else:
-                            EntityID.append(ins_fields['id'])
-                            cur.Upd(False, "company", ins_fields)
-                            print(f"{row['RQ_INN']} добавлена в БД")
-
+                            # Добавляем номер сущности в список
+                            EntityID.append(row["ENTITY_ID"])
+                            # Проверка наличия номера реквизита у клиента
+                            if not cur.row_count(f"SELECT * FROM clients "
+                                                 f"WHERE Inn={row['RQ_INN']} and Kpp={row['RQ_KPP']}", False):
+                                # Обновление данных БД
+                                upd_fields = {
+                                    "ReqId": row["ID"],
+                                }
+                                cur.Upd(True, "clients", upd_fields, f"Inn={row['RQ_INN']} and Kpp={row['RQ_KPP']}")
+                                print(f"{row['RQ_INN']} добавлена в БД")
+                    # Проверка на наличие реквизитов
                     if "next" in res:
                         next_id = res['next']
                     else:
                         break
 
-            elif ch == 8:
+            # Создание сделок
+            elif ch == 6:
+                print("Создание сделок")
+
+            elif ch == 7:
                 break
             else:
                 print("Такого варианта нет")
-        except Exception as mes:
-            print("Something is wrong ", mes.args[0], mes.args[1])
+        except Exception:
+            print("Something is wrong ", Exception)
         # os.system("pause")
 print("Bye-Bye")
