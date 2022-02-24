@@ -1,6 +1,7 @@
 import datetime
 import json
 import sys
+# import operator
 # import re
 # import time
 # import os
@@ -10,6 +11,174 @@ import numpy as np
 
 from API import ApiBilly, ApiBitrix
 from DAL import DAL
+
+
+def BillyToBitrix(ProspectiveSales):
+    # Поиск компании из ПП
+    bitrix.GET(f"crm.requisite.list?"
+               f"filter[RQ_INN]={ProspectiveSales['Organization']['Inn']}")
+
+    # Если компания не найдена, то необходимо ее создать
+    if not bitrix.result.json()['total']:
+        if ProspectiveSales['Organization']['Type'] == 1 or ProspectiveSales['Organization']['Type'] == 2:
+            bitrix.UpdateComp(ProspectiveSales['Organization']['Inn'])
+        elif ProspectiveSales['Organization']['Type'] == 3:
+            CreateContact(ProspectiveSales)
+        else:
+            print("Проверьте корректность потенциальной продажи")
+            return False
+
+    bitrix.GET(f"crm.requisite.list?"
+               f"filter[RQ_INN]={ProspectiveSales['Organization']['Inn']}&"
+               f"filter[ENTITY_TYPE_ID]={3 if ProspectiveSales['Organization']['Type'] == 3 else 4}&"
+               f"filter[RQ_KPP]={ProspectiveSales['Organization']['Kpp']}".replace('None', ''))
+
+    typePs = {
+        1: "Подключение",
+        2: "Продление",
+        3: "Допродажа",
+        4: "Обслуживание",
+        5: "Активация"
+    }
+
+    # Формирование наименования сделки
+    name = f"{typePs[ProspectiveSales['Type']]} " \
+           f"{ProspectiveSales['Product']['Name']} " \
+           f"{ProspectiveSales['Organization']['Name']}"
+
+    company_id = bitrix.result.json()['result'][0]['ENTITY_ID']
+    # comments = ProspectiveSales["Comments"]["PartnerComments"].sort(key=operator.itemgetter('Date'), reverse=True)[0]
+    if ProspectiveSales.Manager:
+        bitrix.GET(f"user.get?filter[UF_USR_USERINBILLY]={ProspectiveSales['Manager']['Code']}")
+        ManagerId = bitrix.result.json()['result'][0]['ID']
+    else:
+        ManagerId = 1
+
+    Amount = 0
+    for bills in ProspectiveSales['Bills']:
+        Amount += bills['Amount'] if bills['State'] != 3 else 0
+    SkbProd = cur.SELECT(f"SELECT id_Bitrix FROM products WHERE id_Billy='{ProspectiveSales['Product']['Id']}'")
+    temp = ProspectiveSales['Temperature']
+
+    deal_fields = {
+        "TITLE": name,
+        "TYPE_ID": bitrix.typeSale[ProspectiveSales['Type']],
+        "STAGE_ID": bitrix.stages[ProspectiveSales['Stages'][len(ProspectiveSales['Stages']) - 1]['StageId']],
+        "CURRENCY_ID": "RUB",
+        "OPPORTUNITY": Amount,
+        "BEGINDATE": ProspectiveSales['CreateTime'],
+        "CLOSEDATE": ProspectiveSales['Status']['PostponedToDate'],
+        "COMMENTS": ProspectiveSales['Comments']['SourceComment']['Text'],
+        "ASSIGNED_BY_ID": ManagerId,
+        "ADDITIONAL_INFO": "Test",
+        "CATEGORY_ID": 2,
+        "OPENED": "Y",
+        "UF_CRM_SKBPRODUCT": SkbProd.fetchone()[0],
+        "UF_CRM_CODPP": "https://billy-partners.kontur.ru/prospectivesale/" + ProspectiveSales['Id'],
+        "UF_CRM_LINKBILL": "https://billy-partners.kontur.ru/billinfo/" + ProspectiveSales['Bills'][0]['BillId'],
+        "UF_CRM_BRIEF": ProspectiveSales['Brief']['Name'],
+        "UF_CRM_CODSC": ProspectiveSales['Partner']['Code'],
+        "UF_CRM_ISTOCHNIKVIGRUZKI": ProspectiveSales['Source']['Name'],
+        "UF_CRM_PAGENT": ProspectiveSales['Supplier']['PartnerCode'],
+        "UF_CRM_NUMBER_BILL": ProspectiveSales['Bills'][0]['Number'],
+        "UF_CRM_DATE_BILL": ProspectiveSales['Bills'][0]['CreateDate'],
+        "UF_CRM_DATE_PAY": ProspectiveSales['Bills'][0]['PaymentDate'],
+        "UF_CRM_AUTO_BILL": ProspectiveSales['Bills'][0]['PaymentDate'],
+        "UF_CRM_TEMPERATURE": 611 if temp == 1 else (613 if temp == 2 else (615 if temp == 3 else None))
+    }
+
+    if ProspectiveSales['Organization']['Type'] == 1 or ProspectiveSales['Organization']['Type'] == 2:
+        deal_fields["COMPANY_ID"] = company_id
+    elif ProspectiveSales['Organization']['Type'] == 3:
+        deal_fields['CONTACT_ID'] = company_id
+
+    bitrix.GET(f"crm.deal.list?filter[%UF_CRM_CODPP]={ProspectiveSales['Id']}&filter[CATEGORY_ID]=2")
+    method = "update" if bitrix.result.json()['total'] else "add"
+
+    s_req = f"crm.deal.{method}?params[REGISTER_SONET_EVENT]=Y&" \
+            + '&'.join([f'fields[{key}]={value}' for key, value in deal_fields.items()]) \
+            + (f"&id={bitrix.result.json()['result'][0]['ID']}" if method == 'update' else '')
+
+    bitrix.GET(s_req)
+
+
+def CreateContact(ProspectiveSales):
+    # Наименование организации
+    if resp_api.ClientsFind(ProspectiveSales["Organization"]["Inn"], "", 3):
+        name = resp_api.result.json()["Name"]
+    else:
+        name = str(ProspectiveSales["Organization"]["Name"]).title()
+
+    email = ""
+    phone = ""
+
+    # Словарь с полями контакта
+    cont_fields = {
+        "OPENED": "Y",
+        "ASSIGNED_BY_ID": 1,
+        "TYPE_ID": "CLIENT",
+        "SOURCE_ID": "SELF",
+        "LAST_NAME": name.split()[0]
+    }
+
+    # Проверка на наличие имени и отчество
+    if len(name.split()) > 1:
+        cont_fields["NAME"] = name.split()[1]
+        if len(name.split()) > 2:
+            cont_fields["SECOND_NAME"] = ' '.join(name.split()[2:])
+
+    # Если есть контакты, то
+    if len(ProspectiveSales["Contacts"]):
+        # Заполнение Email и номера телефона
+        if len(ProspectiveSales["Contacts"][0]["Emails"]):
+            email = ProspectiveSales['Contacts'][0]['Emails'][0]['Address']
+        if len(ProspectiveSales["Contacts"][0]["Phones"]):
+            phone = ProspectiveSales['Contacts'][0]['Phones'][0]['Number']
+
+            if ProspectiveSales["Contacts"][0]["Phones"][0]["AdditionalNumber"]:
+                phone += f'({ProspectiveSales["Contacts"][0]["Phones"][0]["AdditionalNumber"]})'
+
+    # Поиск клиента с таким телефоном и email на битриксе
+    isFind = bitrix.FindContact(email, phone)
+    # Если номер телефона и email в битриксе не существуют
+    if not isFind:
+        cont_fields["EMAIL][0][VALUE_TYPE"] = "WORK"
+        cont_fields["EMAIL][0][VALUE"] = email
+        cont_fields["PHONE][0][VALUE_TYPE"] = "WORK"
+        cont_fields["PHONE][0][VALUE"] = phone
+
+    # Создание контакта в Битриксе
+    bitrix.GET(f"crm.contact.add?PARAMS[REGISTER_SONET_EVENT]&" +
+               '&'.join([f'fields[{key}]={value}' for key, value in cont_fields.items()]))
+
+    # Заполнение реквизита
+    req_fields = {
+        "ENTITY_TYPE_ID": 3,
+        "ENTITY_ID": bitrix.result.json()['result'],
+        "PRESET_ID": 5,
+        "RQ_INN": row[1],
+        "RQ_NAME": name,
+        "RQ_LAST_NAME": name.split()[0],
+        "UF_CRM_BILLY": row[0],
+        "NAME": "Физ. лицо",
+        "ACTIVE": "Y"
+    }
+    if len(name.split()) > 1:
+        req_fields["RQ_FIRST_NAME"] = name.split()[1]
+        if len(name.split()) > 2:
+            req_fields["RQ_SECOND_NAME"] = ' '.join(name.split()[2:])
+
+    # Создание реквизита для контакта
+    bitrix.GET(f"crm.requisite.add?" +
+               '&'.join([f'fields[{key}]={value}' for key, value in req_fields.items()]))
+    # Обновление данных в БД
+    cur.Upd(
+        True,
+        "clients",
+        f"ReqId = {bitrix.result.json()['result']}",
+        f"guid = '{row[0]}'"
+    )
+
 
 cur = DAL()  # Экземпляр класса DAL для работы с БД
 
@@ -25,7 +194,8 @@ if cur:
         4: "Исправление неправильных реквизитов",
         5: "Выборка компаний",
         6: "Создание сделок",
-        7: "Выход"
+        7: "Создание или обновление 1 сделки",
+        8: "Выход"
     }
 
     s_action = '\n'.join([f"{key}) {value}" for key, value in action.items()]) + '\n'
@@ -109,12 +279,8 @@ if cur:
                                             "ClientType": params['TypeOrg'],
                                             "JSON": json.dumps(fields).replace("\\", "\\\\").replace("'", "\\\'"),
                                         }
-                                        cur.Upd(
-                                            True,
-                                            "prospectivesales",
-                                            upd_fields,
-                                            f"idProspectivesales = '{params['idPs']}'"
-                                        )
+                                        s = f"idProspectivesales = '{params['idPs']}'"
+                                        cur.Upd(True, "prospectivesales", upd_fields, s)
                                 else:
                                     # Строка записи ПП в таблицу
                                     ins_fields = {
@@ -131,8 +297,13 @@ if cur:
                                     cur.Upd(
                                         False,
                                         "prospectivesales",
+                                        # ins_fields
                                         ', '.join([f"{key}='{value}'" for key, value in ins_fields.items()])[:-1]
                                     )
+
+                                # if fields['Manager'] and fields['SalesChannel'] == 2:
+                                #     BillyToBitrix(fields)
+
                                 j += 1
                                 print(f"Обработано {j} новостей")
                         resp_api.UpdateTimeStamp(News["NextTimestamp"])  # Обновление параметров запроса
@@ -224,81 +395,7 @@ if cur:
                             cur.SELECT(f"SELECT * FROM prospectivesales WHERE idOrganization = '{row[0]}'")
                             js = json.loads(cur.cursor.fetchone()[7])
 
-                            # Наименование организации
-                            if resp_api.ClientsFind(js["Organization"]["Inn"], "", 3):
-                                name = resp_api.result.json()["Name"]
-                            else:
-                                name = str(js["Organization"]["Name"]).title()
-
-                            email = ""
-                            phone = ""
-                            s_req = ""
-
-                            # Словарь с полями контакта
-                            cont_fields = {
-                                "OPENED": "Y",
-                                "ASSIGNED_BY_ID": 1,
-                                "TYPE_ID": "CLIENT",
-                                "SOURCE_ID": "SELF",
-                                "LAST_NAME": name.split()[0]
-                            }
-
-                            # Проверка на наличие имени и отчество
-                            if len(name.split()) > 1:
-                                cont_fields["NAME"] = name.split()[1]
-                                if len(name.split()) > 2:
-                                    cont_fields["SECOND_NAME"] = ' '.join(name.split()[2:])
-
-                            # Если есть контакты, то
-                            if len(js["Contacts"]):
-                                # Заполнение Email и номера телефона
-                                if len(js["Contacts"][0]["Emails"]):
-                                    email = js['Contacts'][0]['Emails'][0]['Address']
-                                if len(js["Contacts"][0]["Phones"]):
-                                    phone = js['Contacts'][0]['Phones'][0]['Number']
-                                    if js["Contacts"][0]["Phones"][0]["AdditionalNumber"]:
-                                        phone += f'({js["Contacts"][0]["Phones"][0]["AdditionalNumber"]})'
-
-                            # Поиск клиента с таким телефоном и email на битриксе
-                            isFind = bitrix.FindContact(email, phone)
-                            # Если номер телефона и email в битриксе не существуют
-                            if not isFind:
-                                cont_fields["EMAIL][0][VALUE_TYPE"] = "WORK"
-                                cont_fields["EMAIL][0][VALUE"] = email
-                                cont_fields["PHONE][0][VALUE_TYPE"] = "WORK"
-                                cont_fields["PHONE][0][VALUE"] = phone
-
-                            # Создание контакта в Битриксе
-                            bitrix.GET(f"crm.contact.add?PARAMS[REGISTER_SONET_EVENT]&" +
-                                       '&'.join([f'fields[{key}]={value}' for key, value in cont_fields.items()]))
-
-                            # Заполнение реквизита
-                            req_fields = {
-                                "ENTITY_TYPE_ID": 3,
-                                "ENTITY_ID": bitrix.result.json()['result'],
-                                "PRESET_ID": 5,
-                                "RQ_INN": row[1],
-                                "RQ_NAME": name,
-                                "RQ_LAST_NAME": name.split()[0],
-                                "UF_CRM_BILLY": row[0],
-                                "NAME": "Физ. лицо",
-                                "ACTIVE": "Y"
-                            }
-                            if len(name.split()) > 1:
-                                req_fields["RQ_FIRST_NAME"] = name.split()[1]
-                                if len(name.split()) > 2:
-                                    req_fields["RQ_SECOND_NAME"] = ' '.join(name.split()[2:])
-
-                            # Создание реквизита для контакта
-                            bitrix.GET(f"crm.requisite.add?" +
-                                       '&'.join([f'fields[{key}]={value}' for key, value in req_fields.items()]))
-                            # Обновление данных в БД
-                            cur.Upd(
-                                True,
-                                "clients",
-                                f"ReqId = {bitrix.result.json()['result']}",
-                                f"guid = '{row[0]}'"
-                            )
+                            CreateContact(js)
 
             # Удаление и обновление реквизитов в битриксе
             elif ch == 4:
@@ -336,7 +433,7 @@ if cur:
                     # Перебор значений из выборки
                     for row in res["result"]:
                         # Получение информации из да-даты
-                        dadata = ApiBitrix.GET_dadata({"inn": row["RQ_INN"]})
+                        dadata = bitrix.GetInfo(row["RQ_INN"])
                         # Обновление данных реквизита
                         bitrix.GET(f"crm.requisite.update?id={row['ID']}&"
                                    f"fields[RQ_KPP]={dadata['suggestions'][0]['data']['kpp']}&"
@@ -386,6 +483,43 @@ if cur:
                 print("Создание сделок")
 
             elif ch == 7:
+                codpp = "e12c7ea4-0501-4482-bd42-00a6767b4c25"
+                ProspectiveSales = resp_api.GET(
+                    resp_api.methods['Find'].replace("{id}", codpp)).json()
+                # print(ProspectiveSales)
+                # BillyToBitrix(ProspectiveSales)
+                comments = sorted(ProspectiveSales['Comments']['PartnerComments'], key=lambda x: x['Date'])
+                bitrix.GET(f'crm.deal.list?filter[%UF_CRM_CODPP]={codpp}')
+                if bitrix.result.json()['total'] == 1:
+                    bitrix.GET(f"crm.deal.get?id={bitrix.result.json()['result'][0]['ID']}")
+                    deal = bitrix.result.json()['result']
+                    dateCom = deal['UF_CRM_LAST_PARTNERCOMMENT'][:-6]
+                    id = next((x for x in comments if x['Date'] == dateCom), None)
+                    id = comments.index(id) + 1 if id else 0
+                    for com in comments[id:]:
+                        name = com['Author'].split()
+                        bitrix.GET(
+                            f"user.get?"
+                            f"filter[LAST_NAME]={name[0]}&"
+                            f"filter[NAME]={name[1]}&"
+                            f"filter[SECOND_NAME]={name[2]}"
+                        )
+
+                        fields = {
+                            "AUTHOR_ID": bitrix.result.json()['result'][0]['ID'],
+                            "COMMENT": f"[QUOTE]"
+                                       f"[B]Билли:[/B] [I]{com['Date'].replace('T', ' ')}[/I]\n{com['Text']}"
+                                       f"[/QUOTE]",
+                            "ENTITY_TYPE": "deal",
+                            "ENTITY_ID": deal['ID']
+                            #     datetime.datetime.strptime(comments[0]['Date'], "%Y-%m-%dT%H:%M:%S")
+                        }
+                        bitrix.GET("crm.timeline.comment.add?"
+                                   + '&'.join([f'fields[{key}]={value}' for key, value in fields.items()]))
+                        bitrix.GET(f"crm.deal.update?id={deal['ID']}&"
+                                   f"fields[UF_CRM_LAST_PARTNERCOMMENT]={com['Date']}")
+
+            elif ch == 8:
                 break
             else:
                 print("Такого варианта нет")

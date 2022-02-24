@@ -173,6 +173,23 @@ class ApiBilly:
 
 
 class ApiBitrix:
+    stages = {
+        "47583553-8582-49d5-8337-d66a75001530": "C2:NEW",
+        "9d3d7591-d41d-4c5e-9897-316383892dfc": "C2:FORMED_OFFER",
+        "84756de0-5632-4e7c-b85a-13351d67ce87": "C2:INVOICED",
+        "f4b727c0-04ff-45eb-8d23-8f2379ff00b1": "C2:PAYMENT_RECEIVED",
+        "46195862-f1f3-4814-ab8c-3da3d60cb0b8": "C2:GRANTED_ACCESS",
+        "a8d93fdb-896a-44c5-a75d-d63fe06b075f": "C2:WON"
+    }
+
+    typeSale = {
+        1: "SALE",
+        2: "COMPLEX",
+        3: "GOODS",
+        4: "SERVICES",
+        5: "SERVICE"
+    }
+
     URL_bitrix = "https://shturmanit.bitrix24.ru/rest/1/pv07bkvp2y83yn07/"
 
     URL_dadata = "http://ke29.ru/dadata-get.php"
@@ -182,7 +199,12 @@ class ApiBitrix:
     result = None
 
     def GetInfo(self, inn):
+        time.sleep(0.5)
         return self.GET(self.URL_dadata + f"?inn={inn}")
+
+    def UpdateComp(self, inn):
+        time.sleep(0.5)
+        requests.get(url=f"http://ke29.ru/comp.php?inn={inn}", timeout=30)
 
     def FindContact(self, email=None, phone=None):
         """
@@ -216,7 +238,4 @@ class ApiBitrix:
         time.sleep(0.6)
         self.result = requests.get(url=self.URL_bitrix + url, headers=self.Headers, params=param, timeout=30)
 
-    @staticmethod
-    def GET_dadata(param):
-        time.sleep(0.5)
-        return requests.get(url=ApiBitrix.URL_dadata, params=param, timeout=30).json()
+
