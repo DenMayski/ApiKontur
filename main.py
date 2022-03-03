@@ -231,7 +231,7 @@ def CreateComments(ProspectiveSales):
                        f"[/TABLE]",
             "ENTITY_TYPE": "deal",
             "ENTITY_ID": deal['ID']
-            #     datetime.datetime.strptime(comments[0]['Date'], "%Y-%m-%dT%H:%M:%S")
+            # datetime.datetime.strptime(comments[0]['Date'], "%Y-%m-%dT%H:%M:%S")
         }
         bitrix.GET("crm.timeline.comment.add?" + FieldsString(fields))
         bitrix.GET(f"crm.deal.update?id={deal['ID']}&"
@@ -320,6 +320,7 @@ cur = DAL()  # Экземпляр класса DAL для работы с БД
 if cur:
     resp_api = ApiBilly()  # Экземпляр класса API для работы с Api
     bitrix = ApiBitrix()
+    external = ApiExternal()
 
     parameters = sys.argv[1:]
     action = {
@@ -329,7 +330,8 @@ if cur:
         4: "Удаление и обновление реквизитов в битриксе",
         5: "Удаление дублирующихся реквизитов у компаний",
         6: "Создание или обновление 1 сделки",
-        7: "Выход"
+        7: "Разбор АЦ УЦ",
+        8: "Выход"
     }
 
     s_action = '\n'.join([f"{key}) {value}" for key, value in action.items()]) + '\n'
@@ -621,6 +623,12 @@ if cur:
                     BillyToBitrix(ProspectiveSales)
                 else:
                     print("Ничего не найдено")
+            elif ch == 7:
+                start = datetime.datetime.strptime("07.07.2021", "%d.%m.%Y")
+                days = datetime.timedelta(days=1)
+                while (start + days).date() <= datetime.date.today():
+                    days = datetime.timedelta(days.days+1)
+
             elif ch == 8:
                 break
             else:

@@ -265,3 +265,4 @@ class ApiExternal:
         except requests.exceptions.Timeout as TimeOut:
             print("TimeOut", TimeOut)
             self.result.status_code = 504
+
