@@ -1,5 +1,6 @@
 import datetime
 import json
+import os
 import sys
 # import operator
 # import re
@@ -449,7 +450,8 @@ if cur:
                 print("Последняя метка", resp_api.REQ_PARAMS['from'])
                 end_time = datetime.datetime.now().strftime('%d %b - %H:%M:%S')
                 print(f"Время окончания {end_time}")
-                f = open("Logs.txt", "a")
+
+                f = open(os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop') + "\\Logs.txt", "a")
                 f.write(f"start: {start_time:20}\t| end: {end_time:20}\t| lasttimestamp: {resp_api.REQ_PARAMS['from']}\n")
                 f.close()
                 # Объединение таблиц чтобы в таблице клиенты всегда были актуальные данные
