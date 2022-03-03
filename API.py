@@ -239,3 +239,29 @@ class ApiBitrix:
         """
         time.sleep(0.6)
         self.result = requests.get(url=self.URL_bitrix + url, headers=self.Headers, params=param, timeout=30)
+
+
+class ApiExternal:
+    """
+    Класс для работы с Api АЦ УЦ
+
+    """
+
+    def __init__(self):
+        self.URL_external = "https://apinew.iecp.ru/api/external/v2/"
+        self.result = None
+        self.BODY_JSON = {
+            "login": "2901@iecp.ru",
+            "pass": "wwMJ4WoZBA"
+        }
+
+    def POST(self, url, json_Body):
+        try:
+            json_Body.update(self.BODY_JSON)
+            self.result = requests.post(url=url, json=json_Body)
+        except requests.exceptions.ConnectionError as ConErr:
+            print("Connection Error", ConErr)
+            self.result.status_code = 400
+        except requests.exceptions.Timeout as TimeOut:
+            print("TimeOut", TimeOut)
+            self.result.status_code = 504
