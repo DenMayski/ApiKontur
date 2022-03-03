@@ -61,7 +61,7 @@ class ApiBilly:
     # Параметры для поиска новостей
     REQ_PARAMS = {
         "from": 1283342357,
-        "count": 500
+        "count": 30
     }
 
     # Тело для POST запроса SwitchStage
@@ -84,7 +84,8 @@ class ApiBilly:
         3: "84756de0-5632-4e7c-b85a-13351d67ce87",  # Согласован счет
         4: "f4b727c0-04ff-45eb-8d23-8f2379ff00b1",  # Получена оплата
         5: "46195862-f1f3-4814-ab8c-3da3d60cb0b8",  # Предоставлен доступ
-        6: "a8d93fdb-896a-44c5-a75d-d63fe06b075f"  # Подписаны документы
+        6: "a8d93fdb-896a-44c5-a75d-d63fe06b075f",  # Подписаны документы
+        7: "12293cee-56c6-4956-bea2-0b1383c524f1"  # Подписаны документы
     }
 
     # Методы поиска новых пп, возвращает ID ПП, временную метку следующей ПП и есть ли еще
@@ -179,7 +180,8 @@ class ApiBitrix:
         "84756de0-5632-4e7c-b85a-13351d67ce87": "C2:INVOICED",
         "f4b727c0-04ff-45eb-8d23-8f2379ff00b1": "C2:PAYMENT_RECEIVED",
         "46195862-f1f3-4814-ab8c-3da3d60cb0b8": "C2:GRANTED_ACCESS",
-        "a8d93fdb-896a-44c5-a75d-d63fe06b075f": "C2:WON"
+        "a8d93fdb-896a-44c5-a75d-d63fe06b075f": "C2:WON",
+        "12293cee-56c6-4956-bea2-0b1383c524f1": "C2:WON"
     }
 
     typeSale = {
@@ -200,7 +202,7 @@ class ApiBitrix:
 
     def GetInfo(self, inn):
         time.sleep(0.5)
-        return self.GET(self.URL_dadata + f"?inn={inn}")
+        return requests.get(self.URL_dadata + f"?inn={inn}")
 
     def UpdateComp(self, inn):
         time.sleep(0.5)
@@ -217,9 +219,9 @@ class ApiBitrix:
         #
         if phone != email:
             count = 0
-            self.GET(self.URL_bitrix + f"crm.contact.list?select[]=PHONE&filter[PHONE]={phone}")
+            self.GET(f"crm.contact.list?select[]=PHONE&filter[PHONE]={phone}")
             count += self.result.json()["total"]
-            self.GET(self.URL_bitrix + f"crm.contact.list?select[]=EMAIL&filter[EMAIL]={email}")
+            self.GET(f"crm.contact.list?select[]=EMAIL&filter[EMAIL]={email}")
             count += self.result.json()["total"]
             is_find = bool(count)
         else:
@@ -237,5 +239,3 @@ class ApiBitrix:
         """
         time.sleep(0.6)
         self.result = requests.get(url=self.URL_bitrix + url, headers=self.Headers, params=param, timeout=30)
-
-
