@@ -258,7 +258,7 @@ class ApiExternal:
     def POST(self, url, json_Body):
         try:
             json_Body.update(self.BODY_JSON)
-            self.result = requests.post(url=url, json=json_Body)
+            self.result = requests.post(url=self.URL_external + url, json=json_Body)
         except requests.exceptions.ConnectionError as ConErr:
             print("Connection Error", ConErr)
             self.result.status_code = 400
