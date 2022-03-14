@@ -244,7 +244,6 @@ class ApiBitrix:
 class ApiExternal:
     """
     Класс для работы с Api АЦ УЦ
-
     """
 
     def __init__(self):
