@@ -28,7 +28,15 @@ class DAL:
 
     def __init__(self):
         try:
+            """
             self.con = pymysql.connect(host='localhost', user='root', password='Fish_Warden99', database='shturman_it')
+            """
+            self.con = pymysql.connect(
+                host='mysql.hosting.nic.ru',
+                user='ke29977478_mysql',
+                password='DY3cbsX/',
+                database='ke29977478_db'
+            )
         except pymysql.err.MySQLError:
             self.cursor = None
             print("Ошибка подключения к БД")

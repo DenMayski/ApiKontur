@@ -49,11 +49,11 @@ class ApiBilly:
         """
         self.cursor = DAL()
         if self.cursor.row_count("lasttimestamp"):
-            self.REQ_PARAMS["from"] = self.cursor.SELECT_ALL("lasttimestamp").fetchone()[0]
+            self.REQ_PARAMS['from'] = self.cursor.SELECT_ALL("lasttimestamp").fetchone()[0]
         else:
-            self.REQ_PARAMS["from"] = int(
-                self.GET(self.methods["lasttimestamp"]).text)
-        self.GET(self.methods["News"], param=self.REQ_PARAMS)
+            self.REQ_PARAMS['from'] = int(
+                self.GET(self.methods['lasttimestamp']).text)
+        self.GET(self.methods['News'], param=self.REQ_PARAMS)
 
     # Заголовок с ключом токеном для подключения
     HEADERS_AUTH = {"x-Auth-CustomToken": "9ab474b4-c588-4d5f-887e-4cd5b583ad92"}
@@ -153,7 +153,7 @@ class ApiBilly:
         """
         self.BODY_JSON = {"Inn": Inn, "Kpp": Kpp if Kpp != "Null" else "", "ClientType": OrgType}
         try:
-            self.POST(self.methods["Clients"])
+            self.POST(self.methods['Clients'])
             return self.result.status_code == 200
         except Exception as msg:
             print("Error", msg)
@@ -166,7 +166,7 @@ class ApiBilly:
         :param str idPs: Идентификатор ПП
         """
         self.BODY_JSON = {"StageId": stage, "NewState": 2, "ManagerName": "Репняков Лев Константинович"}
-        self.POST(url=self.methods["SwitchStage"].replace("{id}", idPs))
+        self.POST(url=self.methods['SwitchStage'].replace("{id}", idPs))
         if self.result.status_code == 200:
             print("Ok")
         else:
@@ -206,7 +206,7 @@ class ApiBitrix:
 
     def UpdateComp(self, inn):
         time.sleep(0.5)
-        requests.get(url=f"http://ke29.ru/comp.php?inn={inn}", timeout=30)
+        self.result = requests.get(url=f"http://ke29.ru/comp.php?inn={inn}", timeout=30)
 
     def FindContact(self, email=None, phone=None):
         """
@@ -220,9 +220,9 @@ class ApiBitrix:
         if phone != email:
             count = 0
             self.GET(f"crm.contact.list?select[]=PHONE&filter[PHONE]={phone}")
-            count += self.result.json()["total"]
+            count += self.result.json()['total']
             self.GET(f"crm.contact.list?select[]=EMAIL&filter[EMAIL]={email}")
-            count += self.result.json()["total"]
+            count += self.result.json()['total']
             is_find = bool(count)
         else:
             is_find = True
@@ -255,7 +255,9 @@ class ApiExternal:
             "pass": "wwMJ4WoZBA"
         }
 
-    def POST(self, url, json_Body):
+    def POST(self, url, json_Body=None):
+        if json_Body is None:
+            json_Body = dict()
         try:
             json_Body.update(self.BODY_JSON)
             self.result = requests.post(url=self.URL_external + url, json=json_Body)
@@ -265,4 +267,3 @@ class ApiExternal:
         except requests.exceptions.Timeout as TimeOut:
             print("TimeOut", TimeOut)
             self.result.status_code = 504
-
