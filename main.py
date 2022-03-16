@@ -662,23 +662,29 @@ def CreateComments(ProspectiveSale):
             # Запрос на обновление метки времени последнего комментария
             bitrix.GET(f"crm.deal.update?id={deal['ID']}&fields[UF_CRM_LAST_PARTNERCOMMENT]={com['Date']}")
     else:
-        bitrix.GET(f"crm.timeline.comment.list?filter[ENTITY_ID]={deal['ID']}&filter[ENTITY_TYPE]=deal")
-        isFind = False
-        for comments in bitrix.result.json()['result']:
-            if ProspectiveSale['Comments']['Text'] in comments['COMMENT']:
-                isFind = True
-                break
-
-        if not isFind:
-            fields = {
-                "AUTHOR_ID": 1,
-                "COMMENT": f"[TABLE][TR][TD][B][COLOR=blue]АЦ УЦ[/COLOR]:[/B][/TD][/TR]"
-                           f"[TR][TD]{ProspectiveSale['Comments']['Text']}[/TD][/TR][/TABLE]",
-                "ENTITY_TYPE": "deal",
-                "ENTITY_ID": deal['ID']
-            }
-            # Запрос создания комментария
-            bitrix.GET("crm.timeline.comment.add?" + FieldsString(fields))
+        if ProspectiveSale['Comments']['Text']:
+            # Получение все комментарии по сделке
+            bitrix.GET(f"crm.timeline.comment.list?filter[ENTITY_ID]={deal['ID']}&filter[ENTITY_TYPE]=deal")
+            # Флаг поиска
+            isFind = False
+            # Перебор всех комментариев
+            for comments in bitrix.result.json()['result']:
+                # Если текст комментария совпадает с существующими комментариями
+                if ProspectiveSale['Comments']['Text'] in comments['COMMENT']:
+                    isFind = True
+                    break
+            # Если комментарий не найден
+            if not isFind:
+                # Поля для запроса на создание комментария
+                fields = {
+                    "AUTHOR_ID": 1,
+                    "COMMENT": f"[TABLE][TR][TD][B][COLOR=blue]АЦ УЦ[/COLOR]:[/B][/TD][/TR]"
+                               f"[TR][TD]{ProspectiveSale['Comments']['Text']}[/TD][/TR][/TABLE]",
+                    "ENTITY_TYPE": "deal",
+                    "ENTITY_ID": deal['ID']
+                }
+                # Запрос создания комментария
+                bitrix.GET("crm.timeline.comment.add?" + FieldsString(fields))
 
 
 # Экземпляр класса DAL для работы с БД
@@ -731,7 +737,6 @@ if cur:
                     if 0 < int(parameters[i]) < len(action.keys()) + 1:
                         break
 
-        # os.system("CLS")
         # Номер действия
         ch = int(parameters[i])
         print(f"Вы выбрали {action[ch]}")
@@ -1330,5 +1335,7 @@ if cur:
                 print("Такого варианта нет")
         except Exception:
             print("Something is wrong ", Exception)
-        # os.system("pause")
+            f = open(os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop') + "\\Logs.txt", "a")
+            f.write(f"Exit with Error: {datetime.datetime.now()}\t{Exception}\n")
+            f.close()
 print("Bye-Bye")

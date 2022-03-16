@@ -248,7 +248,6 @@ class ApiExternal:
     Класс для работы с Api АЦ УЦ
     """
 
-
     def __init__(self):
         self.URL_external = "https://apinew.iecp.ru/api/external/v2/"
         self.result = None
