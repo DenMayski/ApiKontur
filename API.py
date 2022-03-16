@@ -120,6 +120,7 @@ class ApiBilly:
             self.result = requests.get(url=url, headers=self.HEADERS_AUTH, params=param, timeout=30)
         except requests.exceptions.ConnectionError as ConErr:
             print("Connection Error", ConErr)
+            print(url)
             self.result.status_code = 400
         except requests.exceptions.Timeout as TimeOut:
             print("TimeOut", TimeOut)
@@ -138,6 +139,7 @@ class ApiBilly:
             self.result = requests.post(url=url, headers=self.HEADERS_AUTH, json=self.BODY_JSON)
         except requests.exceptions.ConnectionError as ConErr:
             print("Connection Error", ConErr)
+            print(url)
             self.result.status_code = 400
         except requests.exceptions.Timeout as TimeOut:
             print("TimeOut", TimeOut)
@@ -246,12 +248,18 @@ class ApiExternal:
     Класс для работы с Api АЦ УЦ
     """
 
+
     def __init__(self):
         self.URL_external = "https://apinew.iecp.ru/api/external/v2/"
         self.result = None
         self.BODY_JSON = {
             "login": "2901@iecp.ru",
             "pass": "wwMJ4WoZBA"
+        }
+        self.stages = {
+            1: "C3:PREPAYMENT_INVOICE",
+            4: "C3:WON",
+            5: "C5:LOST",
         }
 
     def POST(self, url, json_Body=None):
@@ -262,6 +270,7 @@ class ApiExternal:
             self.result = requests.post(url=self.URL_external + url, json=json_Body)
         except requests.exceptions.ConnectionError as ConErr:
             print("Connection Error", ConErr)
+            print(self.URL_external + url, json_Body, sep="\n")
             self.result.status_code = 400
         except requests.exceptions.Timeout as TimeOut:
             print("TimeOut", TimeOut)
