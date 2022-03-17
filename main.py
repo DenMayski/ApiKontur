@@ -2,6 +2,8 @@ import datetime
 import json
 import os
 import sys
+import time
+import traceback
 # import operator
 # import re
 # import time
@@ -689,6 +691,10 @@ def CreateComments(ProspectiveSale):
 
 # Экземпляр класса DAL для работы с БД
 cur = DAL()
+isBreak = False
+isConnection = False
+start_time = datetime.datetime.now().strftime("%d %b - %H:%M:%S")
+addInf = ""
 
 if cur:
     # Экземпляры классов API
@@ -744,7 +750,6 @@ if cur:
         try:
             # Выборка ПП
             if ch == 1:
-                start_time = datetime.datetime.now().strftime('%d %b - %H:%M:%S')
                 print(f"Время начала: {start_time}")
                 print(f"Метка времени {resp_api.REQ_PARAMS['from']}")
                 result_requests = []  # Список ПП
@@ -1333,9 +1338,28 @@ if cur:
                 break
             else:
                 print("Такого варианта нет")
+        except ConnectionError:
+            print("Connection Error", ConnectionError)
+            f = open(os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop') + "\\Logs.txt", "a")
+            f.write(f"Exit with Connection Error: {datetime.datetime.now()}\t{ConnectionError}\n")
+            f.close()
+            isBreak = True
+            isConnection = True
+            addInf = traceback.format_exc()
         except Exception:
             print("Something is wrong ", Exception)
             f = open(os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop') + "\\Logs.txt", "a")
             f.write(f"Exit with Error: {datetime.datetime.now()}\t{Exception}\n")
             f.close()
+            isBreak = True
+            addInf = Exception
+        finally:
+            logs_field = dict()
+            logs_field['DateStart'] = start_time
+            logs_field['DateStop'] = datetime.datetime.strftime(datetime.datetime.now(), "%d %b - %H:%M:%S")
+            logs_field['EndResult'] = isBreak
+            logs_field['AdditionalInfo'] = addInf
+            cur.Upd(False, "Logs", logs_field)
+
 print("Bye-Bye")
+time.sleep(2)
