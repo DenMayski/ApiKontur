@@ -1,4 +1,5 @@
 import pymysql
+import io
 
 
 class DAL:
@@ -31,11 +32,13 @@ class DAL:
             """
             self.con = pymysql.connect(host='localhost', user='root', password='Fish_Warden99', database='shturman_it')
             """
+            f = open("DB.txt", "r")
+            conn_data = [x[:-1] for x in f.readlines()]
             self.con = pymysql.connect(
-                host='mysql.hosting.nic.ru',
-                user='ke29977478_mysql',
-                password='DY3cbsX/',
-                database='ke29977478_db'
+                host=conn_data[0],
+                user=conn_data[1],
+                password=conn_data[2],
+                database=conn_data[3]
             )
         except pymysql.err.MySQLError:
             self.cursor = None
