@@ -705,14 +705,10 @@ if cur:
     # Действия доступные пользователю
     action = {
         1: "Проверить новости",
-        2: "Проверить закрытые продажи",
-        3: "Создать физ лица",
-        4: "Удаление и обновление реквизитов в битриксе",
-        5: "Удаление дублирующихся реквизитов у компаний",
-        6: "Создание или обновление 1 сделки",
-        7: "Разбор АЦ УЦ",
-        8: "Разбор АЦ УЦ по конкретной дате",
-        9: "Выход"
+        2: "Создание или обновление 1 сделки",
+        3: "Разбор АЦ УЦ",
+        4: "Разбор АЦ УЦ по конкретной дате",
+        5: "Выход"
     }
     # Список параметров при запуске программы
     parameters = sys.argv[1:]
@@ -863,158 +859,8 @@ if cur:
                 print(f"На данный момент количество организаций в БД: {cur.row_count('Clients')}")
                 '''
 
-            # Проверка статусов ПП
-            elif ch == 2:
-                completed = []  # Список завершенных ПП
-                # Перебор всех записей таблицы
-                for row in cur.SELECT_ALL("prospectivesales"):
-                    resp_api.GET(resp_api.methods['Find'].replace("{id}", row[0]))  # Поиск информации о ПП
-                    # Проверка статуса ПП
-                    if resp_api.result.json()['Status']['State'] == 2:
-                        completed.append(row[0])
-                    # Проверка канала продажи
-                    if resp_api.result.json()['SalesChannel'] == 2:
-                        # Проверка количества счетов
-                        if len(resp_api.result.json()['Bills']):
-                            isPaid = True  # Флаг оплачено
-                            # Перебор всех счетов
-                            for bill in resp_api.result.json()['Bills']:
-                                isPaid = isPaid and (bill['State'] == 1 or bill['State'] == 3)  # Проверка статуса счета
-                            # Проверка оплаты счета
-                            if isPaid:
-                                # Список этапов
-                                stages = resp_api.result.json()['Stages']
-                                # Проверка выделения этапа
-                                if resp_api.stages[4] in [list(i.values())[0] for i in stages]:
-                                    print("++")
-                                else:
-                                    print("??", row[0])
-                            else:
-                                print("+-", row[0])
-                        else:
-                            print("--", row[0])
-                for row in completed:
-                    # cur.EXECUTE(f"DELETE FROM prospectivesales WHERE idProspectiveSales='{row}'")
-                    pass
-
-            # Создание контактов с реквизитами
-            elif ch == 3:
-                # Выбор всех строк, где Тип клиента 3
-                table = cur.SELECT("Select * from Clients where ClientType = 3")
-                for row in table.fetchall():
-                    # Проверка заполненности ReqId в таблице
-                    if not row[4]:
-                        # Запрос битриксу на поиск клиента по ИНН
-                        bitrix.GET(f"crm.requisite.list?"
-                                   f"filter[ENTITY_TYPE_ID]=3&"
-                                   f"filter[RQ_INN]={row[1]}")
-                        # Если данные найдены, то внести информацию в БД
-                        if bitrix.result.json()['total'] == 1:
-                            Req = bitrix.result.json()['result'][0]
-                            cur.Upd(
-                                True,
-                                "clients",
-                                f"ReqId = '{Req['ID']}'",
-                                f"guid = '{row[0]}'")
-                            print(f"{row[1]} have ReqId: {bitrix.result.json()['result'][0]['ID']}")
-                        elif bitrix.result.json()['total'] > 1:
-                            f = open("Need_to_see.txt", "a")
-                            f.writelines(f"\n\n{row[0]:30} | {row[1]:15} HAVE MANY REQ\n\n")
-                            f.close()
-                            print(f"{row[1]} уже существует")
-                            print("https://shturmanit.bitrix24.ru/crm/contact/details/" +
-                                  bitrix.result.json()['result'][0]['ENTITY_ID'] + "/")
-                        # Если данные не найдены, то необходимо его создать
-                        else:
-                            # Выбираем ПП по id организации GUID == idOrganization
-                            cur.SELECT(f"SELECT * FROM prospectivesales WHERE idOrganization = '{row[0]}'")
-                            js = json.loads(cur.cursor.fetchone()[7])
-
-                            CreateContact(js)
-
-            # Удаление и обновление реквизитов в битриксе
-            elif ch == 4:
-                next_id = 0
-                # Цикл на удаление реквизитов контактов созданных по шаблону "Организация"
-                while True:
-                    # Получение выборки Id реквизитов, созданных по шаблону "Организация"
-                    bitrix.GET(f"crm.requisite.list?"
-                               f"filter[ENTITY_TYPE_ID]=3&"
-                               f"filter[PRESET_ID]=1&"
-                               f"select[]=ID&"
-                               f"start = {next_id}")
-                    res = bitrix.result
-                    # Перебор результатов выборки
-                    for reqId in res.json()['result']:
-                        bitrix.GET(f"crm.requisite.delete?id={reqId['ID']}")
-                        print(f"Реквизит {reqId['ID']} удален")
-                    # Проверка на наличие новых реквизитов
-                    if "next" in res.json():
-                        next_id = bitrix.result.json()['next']
-                    else:
-                        # Обнуление next_id
-                        nex_id = 0
-                        break
-
-                # Цикл на обновление реквизитов у которых отсутствуют КПП и ОГРН
-                while True:
-                    # Получение выборки реквизитов с пустым КПП
-                    bitrix.GET(f"crm.requisite.list?"
-                               f"filter[ENTITY_TYPE_ID]=4&"
-                               f"filter[PRESET_ID]=1&"
-                               f"filter[RQ_KPP]=&"
-                               f"start={next_id}")
-                    res = bitrix.result.json()
-                    # Перебор значений из выборки
-                    for row in res['result']:
-                        # Получение информации из да-даты
-                        dadata = bitrix.GetInfo(row['RQ_INN'])
-                        # Обновление данных реквизита
-                        bitrix.GET(f"crm.requisite.update?id={row['ID']}&"
-                                   f"fields[RQ_KPP]={dadata['suggestions'][0]['data']['kpp']}&"
-                                   f"fields[RQ_OGRN]={dadata['suggestions'][0]['data']['ogrn']}")
-
-                        print(f"Организации {row['RQ_INN']} добавлены КПП и ОГРН")
-                    # Проверка на наличие новых реквизитов
-                    if "next" in res:
-                        next_id = res['next']
-                    else:
-                        break
-
-            # Удаление дублирующихся реквизитов у компаний
-            elif ch == 5:
-                next_id = 0
-                # Список сущностей
-                EntityID = []
-                while True:
-                    bitrix.GET(f"crm.requisite.list?filter[ENTITY_TYPE_ID]=4&filter[PRESET_ID]=1&start={next_id}")
-                    res = bitrix.result.json()
-                    for row in res['result']:
-                        # Если у сущности уже есть реквизит
-                        if row['ENTITY_ID'] in EntityID:
-                            # Удаляем дубликаты из битрикса
-                            bitrix.GET(f"crm.requisite.delete?id={row['ID']}")
-                            print(f"Удален реквизит с id {row['ID']}")
-                        else:
-                            # Добавляем номер сущности в список
-                            EntityID.append(row['ENTITY_ID'])
-                            # Проверка наличия номера реквизита у клиента
-                            if not cur.row_count(f"SELECT * FROM clients "
-                                                 f"WHERE Inn={row['RQ_INN']} and Kpp={row['RQ_KPP']}", False):
-                                # Обновление данных БД
-                                upd_fields = {
-                                    "ReqId": row['ID'],
-                                }
-                                cur.Upd(True, "clients", upd_fields, f"Inn={row['RQ_INN']} and Kpp={row['RQ_KPP']}")
-                                print(f"{row['RQ_INN']} добавлена в БД")
-                    # Проверка на наличие реквизитов
-                    if "next" in res:
-                        next_id = res['next']
-                    else:
-                        break
-
             # Создание сделки
-            elif ch == 6:
+            elif ch == 2:
                 # Код ПП
                 codpp = input("Введите код ПП")
                 # Получение ПП
@@ -1026,7 +872,7 @@ if cur:
                     print("Ничего не найдено")
 
             # Разбор заявок АЦ
-            elif ch == 7:
+            elif ch == 3:
                 # Начало разбора заявок
                 start = datetime.datetime.strptime("07.07.2021", "%d.%m.%Y")
                 # Дельта времени
@@ -1186,7 +1032,8 @@ if cur:
                     days = datetime.timedelta(days=days.days + 1)
                     createDate = (start + days).date()
 
-            elif ch == 8:
+            # Разбор заявок по конкретной дате
+            elif ch == 4:
                 i = 0
                 # Получение продуктов АЦ
                 external.POST("products")
@@ -1334,7 +1181,9 @@ if cur:
                         BillyToBitrix(ProspectiveSale)
                         i += 1
                         print("Обработано", i, ProspectiveSale['Id'])
-            elif ch == 9:
+
+            # Выход
+            elif ch == 5:
                 break
             else:
                 print("Такого варианта нет")
