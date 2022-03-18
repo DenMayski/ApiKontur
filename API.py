@@ -1,4 +1,5 @@
 import time
+import io
 
 import requests
 
@@ -47,16 +48,20 @@ class ApiBilly:
         """
         Конструктор класса, при инициализации записывает метку времени
         """
+
         self.cursor = DAL()
+
+        f = open("Info.txt", "r")
+        # Заголовок с ключом токеном для подключения
+        self.HEADERS_AUTH = {"x-Auth-CustomToken": f.readlines()[0][:-1]}
+        f.close()
+
         if self.cursor.row_count("lasttimestamp"):
             self.REQ_PARAMS['from'] = self.cursor.SELECT_ALL("lasttimestamp").fetchone()[0]
         else:
             self.REQ_PARAMS['from'] = int(
                 self.GET(self.methods['lasttimestamp']).text)
         self.GET(self.methods['News'], param=self.REQ_PARAMS)
-
-    # Заголовок с ключом токеном для подключения
-    HEADERS_AUTH = {"x-Auth-CustomToken": "9ab474b4-c588-4d5f-887e-4cd5b583ad92"}
 
     # Параметры для поиска новостей
     REQ_PARAMS = {
@@ -176,6 +181,12 @@ class ApiBilly:
 
 
 class ApiBitrix:
+
+    def __init__(self):
+        f = open("Info.txt", "r")
+        self.URL_bitrix = f.readlines()[1][:-1]
+        f.close()
+
     stages = {
         "47583553-8582-49d5-8337-d66a75001530": "C2:NEW",
         "9d3d7591-d41d-4c5e-9897-316383892dfc": "C2:FORMED_OFFER",
@@ -194,7 +205,6 @@ class ApiBitrix:
         5: "SERVICE"
     }
 
-    URL_bitrix = "https://shturmanit.bitrix24.ru/rest/1/pv07bkvp2y83yn07/"
 
     URL_dadata = "http://ke29.ru/dadata-get.php"
 
