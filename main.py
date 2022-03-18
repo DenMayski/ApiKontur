@@ -3,7 +3,6 @@ import json
 import os
 import sys
 import time
-import traceback
 # import operator
 # import re
 # import time
@@ -82,7 +81,8 @@ def BillyToBitrix(ProspectiveSale):
                         company_id = bitrix.result.json()['result'][0]['ENTITY_ID']
                 except Exception:
                     comp_fields = {
-                        "TITLE": ProspectiveSale['Organization']['Name'],
+                        "TITLE": f"{ProspectiveSale['Organization']['Name']} "
+                                 f"({ProspectiveSale['Organization']['Inn']})",
                         "COMPANY_TYPE": "CUSTOMER",
                         "INDUSTRY": "OTHER",
                         "EMPLOYEES": "EMPLOYEES_1",
@@ -425,6 +425,7 @@ def CreateContact(ProspectiveSales, company_id=None):
         if bitrix.result.json()['result'][0]['PHONE']:
             HasCont = False
             cont_fields['PHONE'] = list()
+            # Перебор уже существующих телефонов
             for phones in bitrix.result.json()['result'][0]['PHONE']:
                 # Тип и значение электронной почты
                 cont_fields['PHONE'].append(
@@ -436,6 +437,7 @@ def CreateContact(ProspectiveSales, company_id=None):
                 if phone == phones['VALUE']:
                     HasCont = True
 
+            # Проверка на то что номер не АЦ УЦ
             if HasCont and "7405405" not in phone and phone:
                 cont_fields['PHONE'].append(
                     {
@@ -705,10 +707,14 @@ if cur:
     # Действия доступные пользователю
     action = {
         1: "Проверить новости",
-        2: "Создание или обновление 1 сделки",
-        3: "Разбор АЦ УЦ",
-        4: "Разбор АЦ УЦ по конкретной дате",
-        5: "Выход"
+        2: "Проверить закрытые продажи",
+        3: "Создать физ лица",
+        4: "Удаление и обновление реквизитов в битриксе",
+        5: "Удаление дублирующихся реквизитов у компаний",
+        6: "Создание или обновление 1 сделки",
+        7: "Разбор АЦ УЦ",
+        8: "Разбор АЦ УЦ по конкретной дате",
+        9: "Выход"
     }
     # Список параметров при запуске программы
     parameters = sys.argv[1:]
@@ -859,8 +865,158 @@ if cur:
                 print(f"На данный момент количество организаций в БД: {cur.row_count('Clients')}")
                 '''
 
-            # Создание сделки
+            # Проверка статусов ПП
             elif ch == 2:
+                completed = []  # Список завершенных ПП
+                # Перебор всех записей таблицы
+                for row in cur.SELECT_ALL("prospectivesales"):
+                    resp_api.GET(resp_api.methods['Find'].replace("{id}", row[0]))  # Поиск информации о ПП
+                    # Проверка статуса ПП
+                    if resp_api.result.json()['Status']['State'] == 2:
+                        completed.append(row[0])
+                    # Проверка канала продажи
+                    if resp_api.result.json()['SalesChannel'] == 2:
+                        # Проверка количества счетов
+                        if len(resp_api.result.json()['Bills']):
+                            isPaid = True  # Флаг оплачено
+                            # Перебор всех счетов
+                            for bill in resp_api.result.json()['Bills']:
+                                isPaid = isPaid and (bill['State'] == 1 or bill['State'] == 3)  # Проверка статуса счета
+                            # Проверка оплаты счета
+                            if isPaid:
+                                # Список этапов
+                                stages = resp_api.result.json()['Stages']
+                                # Проверка выделения этапа
+                                if resp_api.stages[4] in [list(i.values())[0] for i in stages]:
+                                    print("++")
+                                else:
+                                    print("??", row[0])
+                            else:
+                                print("+-", row[0])
+                        else:
+                            print("--", row[0])
+                for row in completed:
+                    # cur.EXECUTE(f"DELETE FROM prospectivesales WHERE idProspectiveSales='{row}'")
+                    pass
+
+            # Создание контактов с реквизитами
+            elif ch == 3:
+                # Выбор всех строк, где Тип клиента 3
+                table = cur.SELECT("Select * from Clients where ClientType = 3")
+                for row in table.fetchall():
+                    # Проверка заполненности ReqId в таблице
+                    if not row[4]:
+                        # Запрос битриксу на поиск клиента по ИНН
+                        bitrix.GET(f"crm.requisite.list?"
+                                   f"filter[ENTITY_TYPE_ID]=3&"
+                                   f"filter[RQ_INN]={row[1]}")
+                        # Если данные найдены, то внести информацию в БД
+                        if bitrix.result.json()['total'] == 1:
+                            Req = bitrix.result.json()['result'][0]
+                            cur.Upd(
+                                True,
+                                "clients",
+                                f"ReqId = '{Req['ID']}'",
+                                f"guid = '{row[0]}'")
+                            print(f"{row[1]} have ReqId: {bitrix.result.json()['result'][0]['ID']}")
+                        elif bitrix.result.json()['total'] > 1:
+                            f = open("Need_to_see.txt", "a")
+                            f.writelines(f"\n\n{row[0]:30} | {row[1]:15} HAVE MANY REQ\n\n")
+                            f.close()
+                            print(f"{row[1]} уже существует")
+                            print("https://shturmanit.bitrix24.ru/crm/contact/details/" +
+                                  bitrix.result.json()['result'][0]['ENTITY_ID'] + "/")
+                        # Если данные не найдены, то необходимо его создать
+                        else:
+                            # Выбираем ПП по id организации GUID == idOrganization
+                            cur.SELECT(f"SELECT * FROM prospectivesales WHERE idOrganization = '{row[0]}'")
+                            js = json.loads(cur.cursor.fetchone()[7])
+
+                            CreateContact(js)
+
+            # Удаление и обновление реквизитов в битриксе
+            elif ch == 4:
+                next_id = 0
+                # Цикл на удаление реквизитов контактов созданных по шаблону "Организация"
+                while True:
+                    # Получение выборки Id реквизитов, созданных по шаблону "Организация"
+                    bitrix.GET(f"crm.requisite.list?"
+                               f"filter[ENTITY_TYPE_ID]=3&"
+                               f"filter[PRESET_ID]=1&"
+                               f"select[]=ID&"
+                               f"start = {next_id}")
+                    res = bitrix.result
+                    # Перебор результатов выборки
+                    for reqId in res.json()['result']:
+                        bitrix.GET(f"crm.requisite.delete?id={reqId['ID']}")
+                        print(f"Реквизит {reqId['ID']} удален")
+                    # Проверка на наличие новых реквизитов
+                    if "next" in res.json():
+                        next_id = bitrix.result.json()['next']
+                    else:
+                        # Обнуление next_id
+                        nex_id = 0
+                        break
+
+                # Цикл на обновление реквизитов у которых отсутствуют КПП и ОГРН
+                while True:
+                    # Получение выборки реквизитов с пустым КПП
+                    bitrix.GET(f"crm.requisite.list?"
+                               f"filter[ENTITY_TYPE_ID]=4&"
+                               f"filter[PRESET_ID]=1&"
+                               f"filter[RQ_KPP]=&"
+                               f"start={next_id}")
+                    res = bitrix.result.json()
+                    # Перебор значений из выборки
+                    for row in res['result']:
+                        # Получение информации из да-даты
+                        dadata = bitrix.GetInfo(row['RQ_INN'])
+                        # Обновление данных реквизита
+                        bitrix.GET(f"crm.requisite.update?id={row['ID']}&"
+                                   f"fields[RQ_KPP]={dadata['suggestions'][0]['data']['kpp']}&"
+                                   f"fields[RQ_OGRN]={dadata['suggestions'][0]['data']['ogrn']}")
+
+                        print(f"Организации {row['RQ_INN']} добавлены КПП и ОГРН")
+                    # Проверка на наличие новых реквизитов
+                    if "next" in res:
+                        next_id = res['next']
+                    else:
+                        break
+
+            # Удаление дублирующихся реквизитов у компаний
+            elif ch == 5:
+                next_id = 0
+                # Список сущностей
+                EntityID = []
+                while True:
+                    bitrix.GET(f"crm.requisite.list?filter[ENTITY_TYPE_ID]=4&filter[PRESET_ID]=1&start={next_id}")
+                    res = bitrix.result.json()
+                    for row in res['result']:
+                        # Если у сущности уже есть реквизит
+                        if row['ENTITY_ID'] in EntityID:
+                            # Удаляем дубликаты из битрикса
+                            bitrix.GET(f"crm.requisite.delete?id={row['ID']}")
+                            print(f"Удален реквизит с id {row['ID']}")
+                        else:
+                            # Добавляем номер сущности в список
+                            EntityID.append(row['ENTITY_ID'])
+                            # Проверка наличия номера реквизита у клиента
+                            if not cur.row_count(f"SELECT * FROM clients "
+                                                 f"WHERE Inn={row['RQ_INN']} and Kpp={row['RQ_KPP']}", False):
+                                # Обновление данных БД
+                                upd_fields = {
+                                    "ReqId": row['ID'],
+                                }
+                                cur.Upd(True, "clients", upd_fields, f"Inn={row['RQ_INN']} and Kpp={row['RQ_KPP']}")
+                                print(f"{row['RQ_INN']} добавлена в БД")
+                    # Проверка на наличие реквизитов
+                    if "next" in res:
+                        next_id = res['next']
+                    else:
+                        break
+
+            # Создание сделки
+            elif ch == 6:
                 # Код ПП
                 codpp = input("Введите код ПП")
                 # Получение ПП
@@ -872,7 +1028,7 @@ if cur:
                     print("Ничего не найдено")
 
             # Разбор заявок АЦ
-            elif ch == 3:
+            elif ch == 7:
                 # Начало разбора заявок
                 start = datetime.datetime.strptime("07.07.2021", "%d.%m.%Y")
                 # Дельта времени
@@ -1032,8 +1188,8 @@ if cur:
                     days = datetime.timedelta(days=days.days + 1)
                     createDate = (start + days).date()
 
-            # Разбор заявок по конкретной дате
-            elif ch == 4:
+            # Разбор заявок по дате
+            elif ch == 8:
                 i = 0
                 # Получение продуктов АЦ
                 external.POST("products")
@@ -1183,10 +1339,12 @@ if cur:
                         print("Обработано", i, ProspectiveSale['Id'])
 
             # Выход
-            elif ch == 5:
+            elif ch == 9:
                 break
+
             else:
                 print("Такого варианта нет")
+
         except ConnectionError:
             print("Connection Error", ConnectionError)
             f = open(os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop') + "\\Logs.txt", "a")
@@ -1194,19 +1352,21 @@ if cur:
             f.close()
             isBreak = True
             isConnection = True
-            addInf = traceback.format_exc()
+            addInf = "Exception with connection"
+
         except Exception:
             print("Something is wrong ", Exception)
             f = open(os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop') + "\\Logs.txt", "a")
             f.write(f"Exit with Error: {datetime.datetime.now()}\t{Exception}\n")
             f.close()
             isBreak = True
-            addInf = Exception
+            addInf = "Exception with code"
+
         finally:
             logs_field = dict()
             logs_field['DateStart'] = start_time
             logs_field['DateStop'] = datetime.datetime.strftime(datetime.datetime.now(), "%d %b - %H:%M:%S")
-            logs_field['EndResult'] = isBreak
+            logs_field['EndResult'] = int(isBreak)
             logs_field['AdditionalInfo'] = addInf
             cur.Upd(False, "Logs", logs_field)
 
