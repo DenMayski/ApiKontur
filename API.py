@@ -205,7 +205,6 @@ class ApiBitrix:
         5: "SERVICE"
     }
 
-
     URL_dadata = "http://ke29.ru/dadata-get.php"
 
     Headers = {'Accept': 'application/json', 'Content-Type': 'application/json;charset=utf-8'}
@@ -251,6 +250,7 @@ class ApiBitrix:
         """
         time.sleep(0.6)
         self.result = requests.get(url=self.URL_bitrix + url, headers=self.Headers, params=param, timeout=30)
+        return self.result
 
 
 class ApiExternal:
@@ -270,6 +270,31 @@ class ApiExternal:
             4: "C3:WON",
             5: "C5:LOST",
         }
+        self.POST("products")
+        # Получение продуктов АЦ
+        self.products =  self.result.json()['products']
+        self.products += [
+            {
+                "id": 3336,
+                "name": "Создание и выдача квалифицированного сертификата ключа проверки электронной "
+                        "подписи (КСКПЭП) юридического лица 1 500 ₽",
+                "price": {
+                    "fl": 1500,
+                    "ip": 1500,
+                    "ur": 1500
+                }
+            },
+            {
+                "id": 3346,
+                "name": "Создание и выдача квалифицированного сертификата ключа проверки электронной "
+                        "подписи (КСКПЭП) ИП",
+                "price": {
+                    "fl": 1500,
+                    "ip": 1500,
+                    "ur": 1500
+                }
+            }
+        ]
 
     def POST(self, url, json_Body=None):
         if json_Body is None:

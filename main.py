@@ -21,7 +21,17 @@ def FieldsString(dictionary):
     :param dict dictionary: Словарь для запроса
     :return: Строка fields[key]=value
     """
-    return '&'.join([f'fields[{key}]={value if value is not None else ""}' for key, value in dictionary.items()])
+    s = ""
+    for k1, v1 in dictionary.items():
+        if not isinstance(v1, dict) and not isinstance(v1, list):
+            s += f"fields[{k1}]={v1}&"
+        else:
+            x = 0
+            for item in v1:
+                for k2, v2 in item.items():
+                    s += f"fields[{k1}][{x}][{k2}]={v2}&"
+                x += 1
+    return s[:-1]
 
 
 def BillyToBitrix(ProspectiveSale):
@@ -35,7 +45,7 @@ def BillyToBitrix(ProspectiveSale):
     # Если сделка была взята из АЦ УЦ
     if ProspectiveSale['SalesChannel'] == -1:
         # Создаем или обновляем информацию о компании если ИП или ЮЛ
-        if ProspectiveSale['Organization']['Type'] < 3:
+        if ProspectiveSale['Organization']['Type'] > 1:
             bitrix.UpdateComp(ProspectiveSale['Organization']['Inn'])
             bitrix.GET(f"crm.requisite.list?"
                        f"filter[RQ_INN]={ProspectiveSale['Organization']['Inn']}&"
@@ -119,8 +129,14 @@ def BillyToBitrix(ProspectiveSale):
                 print("Проверьте корректность потенциальной продажи")
                 return False
         else:
-            # Id компании
-            company_id = bitrix.result.json()['result'][0]['ENTITY_ID']
+            # Проверка на ФЛ
+            if ProspectiveSale['Organization']['Type'] == 3:
+                # Id контакта
+                contact_id = bitrix.result.json()['result'][0]['ENTITY_ID']
+            # Иначе это ИП или ЮЛ
+            else:
+                # Id компании
+                company_id = bitrix.result.json()['result'][0]['ENTITY_ID']
 
     # Словарь с полями сделки
     deal_fields = dict()
@@ -324,7 +340,8 @@ def CreateContact(ProspectiveSales, company_id=None):
     :return: Id контакта
     :rtype: int
     """
-
+    if company_id is not None:
+        company_id = int(company_id)
     # Если сделка по АЦ
     if ProspectiveSales['SalesChannel'] == -1:
         # Имя заявителя
@@ -389,7 +406,8 @@ def CreateContact(ProspectiveSales, company_id=None):
         cont_fields['HONORIFIC'] = ProspectiveSales['Documents']['Gender']
 
     contact_id = 0
-    # Поиск по компании
+
+    # Поиск по ИНН
     bitrix.GET(f"crm.requisite.list?"
                f"filter[RQ_INN]={ProspectiveSales['Organization']['Inn']}&"
                f"filter[ENTITY_TYPE_ID]=3")
@@ -401,50 +419,51 @@ def CreateContact(ProspectiveSales, company_id=None):
         contact_id = bitrix.result.json()['result'][0]['ENTITY_ID']
 
         bitrix.GET(f"crm.contact.list?select[]=*&select[]=PHONE&select[]=EMAIL&filter[ID]={contact_id}")
-        if bitrix.result.json()['result'][0]['EMAIL']:
-            HasCont = False
+        HasCont = True
+        if bitrix.result.json()['total']:
             cont_fields['EMAIL'] = list()
-            for emails in bitrix.result.json()['result'][0]['EMAIL']:
-                # Тип и значение электронной почты
-                cont_fields['EMAIL'].append(
-                    {
-                        'VALUE_TYPE': emails['VALUE_TYPE'],
-                        'VALUE': emails['VALUE']
-                    }
-                )
-                if email == emails['VALUE']:
-                    HasCont = True
-            if HasCont and email:
-                cont_fields['EMAIL'].append(
-                    {
-                        'VALUE_TYPE': "WORK",
-                        'VALUE': email
-                    }
-                )
-
-        if bitrix.result.json()['result'][0]['PHONE']:
-            HasCont = False
+            if 'EMAIL' in bitrix.result.json()['result'][0]:
+                for emails in bitrix.result.json()['result'][0]['EMAIL']:
+                    # Тип и значение электронной почты
+                    cont_fields['EMAIL'].append(
+                        {
+                            'VALUE_TYPE': emails['VALUE_TYPE'],
+                            'VALUE': emails['VALUE']
+                        }
+                    )
+                    if email == emails['VALUE']:
+                        HasCont = False
+        if HasCont and email:
+            cont_fields['EMAIL'].append(
+                {
+                    'VALUE_TYPE': "WORK",
+                    'VALUE': email
+                }
+            )
+        HasCont = True
+        if bitrix.result.json()['total']:
             cont_fields['PHONE'] = list()
-            # Перебор уже существующих телефонов
-            for phones in bitrix.result.json()['result'][0]['PHONE']:
-                # Тип и значение электронной почты
-                cont_fields['PHONE'].append(
-                    {
-                        'VALUE_TYPE': phones['VALUE_TYPE'],
-                        'VALUE': phones['VALUE']
-                    }
-                )
-                if phone == phones['VALUE']:
-                    HasCont = True
+            if 'PHONE' in bitrix.result.json()['result'][0]:
+                # Перебор уже существующих телефонов
+                for phones in bitrix.result.json()['result'][0]['PHONE']:
+                    # Тип и значение электронной почты
+                    cont_fields['PHONE'].append(
+                        {
+                            'VALUE_TYPE': phones['VALUE_TYPE'],
+                            'VALUE': phones['VALUE']
+                        }
+                    )
+                    if phone == phones['VALUE']:
+                        HasCont = False
 
-            # Проверка на то что номер не АЦ УЦ
-            if HasCont and "7405405" not in phone and phone:
-                cont_fields['PHONE'].append(
-                    {
-                        'VALUE_TYPE': "WORK",
-                        'VALUE': phone
-                    }
-                )
+        # Проверка на то что номер не АЦ УЦ
+        if HasCont and "7405405" not in phone and phone:
+            cont_fields['PHONE'].append(
+                {
+                    'VALUE_TYPE': "WORK",
+                    'VALUE': phone
+                }
+            )
 
         # Обновление информации о контакте
         bitrix.GET(f"crm.contact.update?id={contact_id}&PARAMS[REGISTER_SONET_EVENT]&" + FieldsString(cont_fields))
@@ -714,7 +733,8 @@ if cur:
         6: "Создание или обновление 1 сделки",
         7: "Разбор АЦ УЦ",
         8: "Разбор АЦ УЦ по конкретной дате",
-        9: "Выход"
+        9: "Разбор одной заявки АЦ УЦ по ID",
+        10: "Выход"
     }
     # Список параметров при запуске программы
     parameters = sys.argv[1:]
@@ -1030,37 +1050,13 @@ if cur:
             # Разбор заявок АЦ
             elif ch == 7:
                 # Начало разбора заявок
-                start = datetime.datetime.strptime("07.07.2021", "%d.%m.%Y")
+                # start = datetime.datetime.strptime("07.07.2021", "%d.%m.%Y")
+                start = datetime.datetime.strptime("06.04.2022", "%d.%m.%Y")
                 # Дельта времени
                 days = datetime.timedelta(days=0)
                 # Дата поиска
                 createDate = (start + days).date()
 
-                # Получение продуктов АЦ
-                external.POST("products")
-                products = external.result.json()['products']
-                products += [
-                    {
-                        "id": 3336,
-                        "name": "Создание и выдача квалифицированного сертификата ключа проверки электронной "
-                                "подписи (КСКПЭП) юридического лица 1 500 ₽",
-                        "price": {
-                            "fl": 1500,
-                            "ip": 1500,
-                            "ur": 1500
-                        }
-                    },
-                    {
-                        "id": 3346,
-                        "name": "Создание и выдача квалифицированного сертификата ключа проверки электронной "
-                                "подписи (КСКПЭП) ИП",
-                        "price": {
-                            "fl": 1500,
-                            "ip": 1500,
-                            "ur": 1500
-                        }
-                    }
-                ]
                 # Счетчик
                 i = 0
                 # Перебор дат от начала до сегодняшнего дня
@@ -1111,7 +1107,7 @@ if cur:
                                     [
                                         {
                                             "Id": i,
-                                            "Name": next((x for x in products if x['id'] == i), None)['name']
+                                            "Name": next((x for x in external.products if x['id'] == i), None)['name']
                                         } for i in row['products']
                                     ],
                                 "SalesChannel": -1,
@@ -1120,7 +1116,7 @@ if cur:
                                     [
                                         {
                                             "Amount":
-                                                next((x for x in products if x['id'] == i), None)['price'][
+                                                next((x for x in external.products if x['id'] == i), None)['price'][
                                                     'fl' if row['type'] == 1 else "ip" if row['type'] == 2 else "ur"],
                                             "State": 1
                                         } for i in row['products']
@@ -1191,31 +1187,6 @@ if cur:
             # Разбор заявок по дате
             elif ch == 8:
                 i = 0
-                # Получение продуктов АЦ
-                external.POST("products")
-                products = external.result.json()['products']
-                products += [
-                    {
-                        "id": 3336,
-                        "name": "Создание и выдача квалифицированного сертификата ключа проверки электронной "
-                                "подписи (КСКПЭП) юридического лица 1 500 ₽",
-                        "price": {
-                            "fl": 1500,
-                            "ip": 1500,
-                            "ur": 1500
-                        }
-                    },
-                    {
-                        "id": 3346,
-                        "name": "Создание и выдача квалифицированного сертификата ключа проверки электронной "
-                                "подписи (КСКПЭП) ИП",
-                        "price": {
-                            "fl": 1500,
-                            "ip": 1500,
-                            "ur": 1500
-                        }
-                    }
-                ]
                 # Получение заявок по дате
                 external.POST("request/list",
                               {
@@ -1262,7 +1233,7 @@ if cur:
                                 [
                                     {
                                         "Id": i,
-                                        "Name": next((x for x in products if x['id'] == i), None)['name']
+                                        "Name": next((x for x in external.products if x['id'] == i), None)['name']
                                     } for i in row['products']
                                 ],
                             "SalesChannel": -1,
@@ -1271,7 +1242,7 @@ if cur:
                                 [
                                     {
                                         "Amount":
-                                            next((x for x in products if x['id'] == i), None)['price'][
+                                            next((x for x in external.products if x['id'] == i), None)['price'][
                                                 'fl' if row['type'] == 1 else "ip" if row['type'] == 2 else "ur"],
                                         "State": 1
                                     } for i in row['products']
@@ -1338,8 +1309,125 @@ if cur:
                         i += 1
                         print("Обработано", i, ProspectiveSale['Id'])
 
-            # Выход
+            # Считывание одной заявки АЦ по ID
             elif ch == 9:
+                id = 448179
+
+                # Получение заявок по дате
+                external.POST("request/view", {"requestId": id})
+                # Проверка на наличие данных
+                if external.result.json()['info']:
+                    # print(createDate.strftime("%d.%m.%Y"), external.result.json(), sep='\n')
+                    # Перебор всех заявок
+                    row = external.result.json()['info']
+                    # Преобразование номера телефона к строке
+                    row['phone'] = str(row['phone'])
+                    # Приведение заявки к виду ПП
+                    ProspectiveSale = {
+                        "Id": id,
+                        "Organization":
+                            {
+                                # Инн организации
+                                "Inn": row['inn'],
+                                # КПП организации
+                                "Kpp": row['kpp'],
+                                # Тип организации
+                                "Type": 3 if row['type'] == 1 else 1 if row['type'] == 3 else 2,
+                                # Имя организации
+                                "Name": row['company'] if row['company'] else
+                                f"{row['lastName']} {row['firstName']} {row['middleName']}",
+                                # Id клиента
+                                'ClientId': None,
+                                # Имя заявителя
+                                "ClaimantName": f"{row['lastName']} {row['firstName']} {row['middleName']}",
+                                # Инн заявителя
+                                "PersonInn": row['personInn'] if row['personInn'] else row['inn'],
+                                # Имя директора
+                                "Director":
+                                    f"{row['headLastName']} {row['headFirstName']} {row['headMiddleName']}"
+                                    if row['headLastName'] else
+                                    f"{row['lastName']} {row['firstName']} {row['middleName']}"
+                            },
+                        "Product":
+                            [
+                                {
+                                    "Id": i,
+                                    "Name": next((x for x in external.products if x['id'] == i), None)['name']
+                                } for i in row['products']
+                            ],
+                        "SalesChannel": -1,
+                        "Manager": "0680",
+                        "Bills":
+                            [
+                                {
+                                    "Amount":
+                                        next((x for x in external.products if x['id'] == i), None)['price'][
+                                            'fl' if row['type'] == 1 else "ip" if row['type'] == 2 else "ur"],
+                                    "State": 1
+                                } for i in row['products']
+                            ],
+                        "Brief": None,
+                        "Comments":
+                            {
+                                "SourceComment": None,
+
+                            },
+                        "Type": 1,
+                        "CreateTime": row['createDate'],
+                        "Partner":
+                            {
+                                "Code": None
+                            },
+                        "Source":
+                            {
+                                "Name": None
+                            },
+                        "Supplier":
+                            {
+                                "PartnerCode": None,
+                            },
+                        "Temperature": 0,
+                        "Status":
+                            {
+                                "State": external.result.json()['statusId'],
+                                "PostponedToDate": datetime.datetime.today()
+                            },
+                        "Contacts":
+                            [
+                                {
+                                    "Emails":
+                                        [
+                                            {
+                                                "Address": row['email']
+                                            }
+                                        ],
+                                    "Phones":
+                                        [
+                                            {
+                                                "Number": ("8" if len(row['phone']) else "") + row['phone'],
+                                                "AdditionalNumber": None
+                                            }
+                                        ]
+                                }
+                            ],
+                        "Stages": external.result.json()['statusId'],
+                        "Documents":
+                            {
+                                "Serial": row['passportSerial'],
+                                "Number": row['passportNumber'],
+                                "Date": row['passportDate'],
+                                "Code": row['passportCode'],
+                                "Birthdate": row['birthDate'],
+                                "Gender": f"HNR_RU_{1 if row['gender'] == 'M' else 2}",
+                                "Snils": row['snils'],
+                                "Ogrn": row['ogrn'] if row['ogrn'] else row["ogrnip"],
+                            }
+                    }
+                    # Создание сделки
+                    print(ProspectiveSale)
+                    # BillyToBitrix(ProspectiveSale)
+            # Выход
+            elif ch == 10:
                 break
 
             else:
