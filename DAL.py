@@ -34,12 +34,20 @@ class DAL:
             """
             f = open("DB.txt", "r")
             conn_data = [x[:-1] for x in f.readlines()]
-            self.con = pymysql.connect(
-                host=conn_data[0],
-                user=conn_data[1],
-                password=conn_data[2],
-                database=conn_data[3]
-            )
+            try:
+                self.con = pymysql.connect(
+                    host=conn_data[0],
+                    user=conn_data[1],
+                    password=conn_data[2],
+                    database=conn_data[3]
+                )
+            except:
+                self.con = pymysql.connect(
+                    host="localhost",
+                    user="root",
+                    password="Fish_Warden99",
+                    database="ke29977478_db"
+                )
         except pymysql.err.MySQLError:
             self.cursor = None
             print("Ошибка подключения к БД")
