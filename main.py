@@ -422,11 +422,6 @@ def CreateContact(ProspectiveSales, company_id=None):
             if ProspectiveSales['Contacts'][0]['Phones'][0]['AdditionalNumber']:
                 phone += f"({ProspectiveSales['Contacts'][0]['Phones'][0]['AdditionalNumber']})"
 
-    # # Поиск клиента с таким телефоном и email на битриксе
-    # isFind = bitrix.FindContact(email, phone)
-    # # Если номер телефона и email в битриксе не существуют
-    # if not isFind:
-
     # Если продажа из АЦ
     if ProspectiveSales['SalesChannel'] == -1:
         # Дата рождения
@@ -653,14 +648,6 @@ def CreateContact(ProspectiveSales, company_id=None):
         else:
             bitrix.GET(f"crm.requisite.update?id={reqId}" + FieldsString(req_fields))
 
-        # Обновление данных в БД
-        # cur.Upd(
-        #     True,
-        #     "clients",
-        #     f"ReqId = {bitrix.result.json()['result']}",
-        #     f"guid = '{ProspectiveSales['Id']}'"
-        # )
-
     return contact_id
 
 
@@ -868,72 +855,8 @@ def Check_News():
         if resp_api.GET(resp_api.methods['News'], resp_api.REQ_PARAMS).status_code == 200:
             News = resp_api.result.json()
             for fields in News['News']:
-                # Получение основных данных ПП
-                # params = {
-                #     "idPs": fields['Id'],
-                #     "VersPs": fields['Version'],
-                #     "TypePs": fields['Type'],
-                #     "InnOrg": fields['Organization']['Inn'],
-                #     "KppOrg": fields['Organization']['Kpp'],
-                #     "IdOrg": fields['Organization']['ClientId'],
-                #     "TypeOrg": fields['Organization']['Type']
-                # }
-                #
-                # # Замена пустых значений на Null
-                # for key in params:
-                #     if not params[key]:
-                #         params[key] = 'Null'
-
                 # Проверка наличия ИНН
                 if fields['Organization']['Inn']:
-
-                    '''
-                    if params['idPs']:
-                        if resp_api.ClientsFind(params['InnOrg'], params['KppOrg'], params['TypeOrg']):
-                            params['idPs'] = resp_api.result.json()['ClientId']
-
-                    s_exec = ""  # Строка запроса
-                    # Строка запроса к БД с условием
-                    query = f"SELECT * FROM prospectivesales " \
-                            f"WHERE idProspectivesales = \"{params['idPs']}\" "
-                    # Проверка наличия ПП
-                    if cur.row_count(query, False):
-                        oldVers = cur.cursor.fetchone()[1]  # Номер версии ПП из БД
-                        # Сравнение версий ПП
-                        if np.int64(oldVers) < np.int64(params['VersPs']):
-                            # Строка обновления ПП в таблице
-                            upd_fields = {
-                                "Version": params['VersPs'],
-                                "TypeSale": params['TypePs'],
-                                "INN": params['InnOrg'],
-                                "KPP": params['KppOrg'],
-                                "IdOrganization": params['IdOrg'],
-                                "ClientType": params['TypeOrg'],
-                                "JSON": json.dumps(fields).replace("\\", "\\\\").replace("'", "\\\'"),
-                            }
-                            s = f"idProspectivesales = '{params['idPs']}'"
-                            cur.Upd(True, "prospectivesales", upd_fields, s)
-                    else:
-                        # Строка записи ПП в таблицу
-                        ins_fields = {
-                            "idProspectivesales": params['idPs'],
-                            "Version": params['VersPs'],
-                            "TypeSale": params['TypePs'],
-                            "INN": params['InnOrg'],
-                            "KPP": params['KppOrg'],
-                            "IdOrganization": params['IdOrg'],
-                            "ClientType": params['TypeOrg'],
-                            "JSON": json.dumps(fields).replace("\\", "\\\\").replace("'", "\\\'") + "'"
-                        }
-                        # ХЗ ПРОВЕРЯЙ МБ БАГ
-                        cur.Upd(
-                            False,
-                            "prospectivesales",
-                            # ins_fields
-                            ', '.join([f"{key}='{value}'" for key, value in ins_fields.items()])[:-1]
-                        )
-                    '''
-
                     # Если тип ПП Подключение, Продление или Допродажа
                     if fields['Type'] < 4:
                         # То создание сделки
@@ -957,24 +880,14 @@ def Check_News():
     f.write(
         f"start: {start_time:20}\t| end: {end_time:20}\t| lasttimestamp: {resp_api.REQ_PARAMS['from']}\n")
     f.close()
-    '''
-                    # Объединение таблиц чтобы в таблице клиенты всегда были актуальные данные
-                    cur.EXECUTE("INSERT INTO clients (guid, inn, kpp, ClientType)"
-                                "SELECT p.IdOrganization, p.INN, p.KPP, p.ClientType "
-                                "FROM Clients c RIGHT JOIN prospectivesales p ON c.guid = p.IdOrganization "
-                                "WHERE c.guid IS NULL AND NOT p.IdOrganization IS null")
-                    print(f"На данный момент количество организаций в БД: {cur.row_count('Clients')}")
-                    '''
 
 
 # Метод проверки новости конкретной сделки
-def ProspectiveSaleToDeal():
+def ProspectiveSaleToDeal(codpp):
     """
-    Создание сделки в битрикс по коду продажи в билли
+    Метод создания сделки по коду ПП
+    :param str codpp: Код потенциальной продажи
     """
-
-    # Код ПП
-    codpp = input("Введите код ПП")
     # Получение ПП
     ProspectiveSales = resp_api.GET(resp_api.methods['Find'].replace("{id}", codpp)).json()
     # Если ПП найдена, то создание сделки
@@ -1011,7 +924,6 @@ def AllAC():
                       )
         # Проверка на наличие данных
         if external.result.json()['info']:
-            # print(createDate.strftime("%d.%m.%Y"), external.result.json(), sep='\n')
             # Перебор всех заявок
             for row in external.result.json()['info']:
                 # Преобразование номера телефона к строке
@@ -1022,6 +934,7 @@ def AllAC():
                 BillyToBitrix(ProspectiveSale)
                 i += 1
                 print(f"Обработано сделок {i}", row['requestId'])
+        # Изменение даты
         days = datetime.timedelta(days=days.days + 1)
         createDate = (start + days).date()
 
@@ -1033,17 +946,9 @@ def DateAC():
     """
     i = 0
     # Получение заявок по дате
-    external.POST("request/list",
-                  {
-                      "filter":
-                          {
-                              "createdate": input("Введите дату\n")
-                          }
-                  }
-                  )
+    external.POST("request/list", {"filter": {"createdate": input("Введите дату\n")}})
     # Проверка на наличие данных
     if external.result.json()['info']:
-        # print(createDate.strftime("%d.%m.%Y"), external.result.json(), sep='\n')
         # Перебор всех заявок
         for row in external.result.json()['info']:
             # Преобразование номера телефона к строке
@@ -1057,23 +962,16 @@ def DateAC():
 
 
 # Метод разбора заявки АЦ по номеру
-def IdAC():
+def IdAC(id=""):
     """
     Метод создает сделку в битрикс по номеру заявки АЦ
+    :param str id: Id заявки АЦ
+    :return:
     """
-    # id = 448179
-    while True:
-        id = input("Введите номер сделки:\t")
-        if id.strip().isdigit():
-            id = int(id)
-            break
-        else:
-            print("Введите корректно номер сделки")
     # Получение заявок по дате
     external.POST("request/view", {"requestId": id})
     # Проверка на наличие данных
     if external.result.json()['info']:
-        # print(createDate.strftime("%d.%m.%Y"), external.result.json(), sep='\n')
         # Перебор всех заявок
         row = external.result.json()['info']
         row['statusId'] = external.result.json()['statusId']
@@ -1086,515 +984,522 @@ def IdAC():
         BillyToBitrix(ProspectiveSale)
 
 
-# Экземпляр класса DAL для работы с БД
-cur = DAL()
-isBreak = False
-isConnection = False
-start_time = datetime.datetime.now().strftime("%d %b - %H:%M:%S")
+# Метод создания заявки АЦ
+def BitrixToAc(id):
+    """
+    Метод создания заявки АЦ из сделки Битрикс
+    :param str id: Id сделки битрикс
+    :return:
+    """
+    mes = ""
+    try:
+        deal = bitrix.GET(f"crm.deal.get?id={id}").json()['result']
+        extDeal = dict()
 
-addInf = ""
+        if deal['COMPANY_ID'] != "0":
+            company = bitrix.GET(f"crm.company.get?id={deal['COMPANY_ID']}").json()['result']
 
-if cur:
-    # Экземпляры классов API
-    resp_api = ApiBilly()
-    bitrix = ApiBitrix()
-    external = ApiExternal()
+            # ИНН директора компании
+            req = bitrix.GET(f"crm.requisite.list?"
+                             f"filter[ENTITY_ID]={company['ID']}&"
+                             f"filter[ENTITY_TYPE_ID]=4").json()['result'][0]
+            res = bitrix.GetInfo(req['RQ_INN']).json()['suggestions'][0]
+            # Тип организации
+            extDeal['type'] = 3 if req['PRESET_ID'] == '1' else 2
 
-    # Действия доступные пользователю
-    action = {
-        1: "Проверить новости",
-        2: "Создание или обновление 1 сделки",
-        3: "Разбор АЦ УЦ",
-        4: "Разбор АЦ УЦ по конкретной дате",
-        5: "Разбор одной заявки АЦ УЦ по ID",
-        6: "Создание заявки в АЦ",
-        7: "Выход"
-    }
-
-    # Список параметров при запуске программы
-    parameters = sys.argv[1:]
-    # Строка с действиями
-    s_action = '\n'.join([f"{key}) {value}" for key, value in action.items()]) + '\n'
-
-    # Если при запуске программы не были переданы параметры
-    if not parameters:
-        while True:
-            # Выбор действия
-            parameters.append(input(s_action))
-            # Если значение целое число и в промежутке от 1 до 5, то программа идет дальше
-            if parameters[0].isdigit():
-                if 0 < int(parameters[0]) < len(action.keys()) + 1:
-                    break
-            print(f"Значение <{parameters.pop()}> не корректно, попробуйте ввести значение заново\n")
-
-    # Перебор всех действий
-    for i in range(len(parameters)):
-        print()
-        # Если значение не целое число, то требуем корректировки значения
-        if not parameters[i].isdigit():
-            print(f"Значение <{parameters[i]}> не корректно, попробуйте ввести значение заново\n")
-            while True:
-                parameters[i] = input(s_action)
-                # Если значение целое число и в промежутке от 1 до 5, то программа идет дальше
-                if parameters[i].isdigit():
-                    if 0 < int(parameters[i]) < len(action.keys()) + 1:
-                        break
-
-        # Номер действия
-        ch = int(parameters[i])
-        print(f"Вы выбрали {action[ch]}")
-        try:
-            # Выборка ПП
-            if ch == 1:
-                Check_News()
-
-            # Создание сделки
-            elif ch == 2:
-                ProspectiveSaleToDeal()
-
-            # Разбор заявок АЦ
-            elif ch == 3:
-                AllAC()
-
-            # Разбор заявок по дате
-            elif ch == 4:
-                DateAC()
-
-            # Считывание одной заявки АЦ по ID
-            elif ch == 5:
-                IdAC()
-            # Выход
-            elif ch == 6:
-                mes = ""
-                id = "0"
-                try:
-                    while True:
-                        id = input("Введите номер сделки в битрикс: ").strip()
-                        if id:
-                            break
-                        else:
-                            print("Введите число")
-                    deal = bitrix.GET(f"crm.deal.get?id={id}").json()['result']
-                    extDeal = dict()
-
-                    if deal['COMPANY_ID'] != "0":
-                        company = bitrix.GET(f"crm.company.get?id={deal['COMPANY_ID']}").json()['result']
-
-                        # ИНН директора компании
-                        req = bitrix.GET(f"crm.requisite.list?"
-                                         f"filter[ENTITY_ID]={company['ID']}&"
-                                         f"filter[ENTITY_TYPE_ID]=4").json()['result'][0]
-                        res = bitrix.GetInfo(req['RQ_INN']).json()['suggestions'][0]
-                        # Тип организации
-                        extDeal['type'] = 3 if req['PRESET_ID'] == '1' else 2
-
-                        # Название организации
-                        extDeal['company'] = res['value']
-                        if extDeal['type'] == 2:
-                            # Фамилия руководителя ИП
-                            extDeal['headLastName'] = res['data']['fio']['surname']
-                            # Имя руководителя ИП
-                            extDeal['headFirstName'] = res['data']['fio']['name']
-                            # Отчество руководителя ИП
-                            extDeal['headMiddleName'] = res['data']['fio']['patronymic']
-                            # Должность руководителя ИП
-                            extDeal['headPosition'] = 'Индивидуальный предприниматель'
-
-                        else:
-                            fio = res['data']['management']['name']
-                            # Фамилия руководителя ЮЛ
-                            extDeal['headLastName'] = fio.split()[0]
-                            # Имя руководителя ЮЛ
-                            extDeal['headFirstName'] = fio.split()[1] if len(fio.split()) > 1 else ""
-                            # Отчество руководителя ЮЛ
-                            extDeal['headMiddleName'] = " ".join(fio.split()[2:]) if len(fio.split()) > 2 else ""
-                            # Должность руководителя ЮЛ
-                            extDeal['headPosition'] = res['data']['management']['post']
-                            # Номер телефона компании
-                            extDeal['companyPhone'] = company['PHONE'][0]['VALUE'][-10:]
-
-                        # ИНН организации
-                        extDeal['inn'] = req['RQ_INN']
-                        # ОГРН организации
-                        extDeal['ogrn'] = req['RQ_OGRN'] if extDeal['type'] == 3 else req['RQ_OGRNIP']
-                        # external['ogrnip'] = req['RQ_OGRNIP'] if external['type'] == 2 else None
-                        # КПП организации
-                        extDeal['kpp'] = req['RQ_KPP'] if extDeal['type'] == 3 else ""
-                        address = bitrix.GET(f"crm.address.list?"
-                                             f"filter[ENTITY_TYPE_ID]=8&"
-                                             f"filter[TYPE_ID]=6&"
-                                             f"filter[ENTITY_ID]={req['ID']}").json()['result'][0]
-
-                        if extDeal['type'] == 2:
-                            # Регион компании
-                            extDeal['region'] = extDeal['ogrn'][3:5]
-                            # Город компании
-                            extDeal['city'] = address['CITY'] if address['CITY'] else address['PROVINCE']
-                            # Адрес компании
-                            extDeal['address'] = f"{address['ADDRESS_1']}" \
-                                                 f"{(', ' + address['ADDRESS_2']) if address['ADDRESS_2'] else ''}" \
-                                                 f"".strip()
-                        else:
-                            # Юридический регион компании
-                            extDeal['regionLaw'] = extDeal['ogrn'][3:5] if extDeal['type'] == 3 else extDeal['ogrnip'][
-                                                                                                     3:5]
-                            # Юридический город компании
-                            extDeal['cityLaw'] = address['CITY'] if address['CITY'] else address['PROVINCE']
-                            # Юридический адрес компании
-                            extDeal['addressLaw'] = f"{address['ADDRESS_1']}" \
-                                                    f"{(', ' + address['ADDRESS_2']) if address['ADDRESS_2'] else ''}" \
-                                                    f"".strip()
-                            extDeal['index'] = address['POSTAL_CODE']
-                    else:
-                        extDeal['type'] = 1
-                        extDeal['address'] = ""
-                        extDeal['region'] = 29
-
-                    contacts = bitrix.GET(f"crm.deal.contact.items.get?id={id}").json()['result']
-
-                    if len(contacts) > 2:
-                        raise Exception("Количество контактов не может быть больше 2: Заявитель и контактное лицо")
-
-                    # Проверка контактов ИП
-                    if extDeal['type'] == 2:
-                        # Получаем первый контакт
-                        c = bitrix.GET(f"crm.contact.get?id={contacts[0]['CONTACT_ID']}").json()['result']
-                        # Проверяем является ли он директором
-                        if c['NAME'] != extDeal['headFirstName'] or c['LAST_NAME'] != extDeal['headLastName'] or c[
-                            'SECOND_NAME'] != \
-                                extDeal['headMiddleName']:
-                            # Если контакт не ИП, то переставить контакты местами
-                            bitrix.GET(f"crm.deal.contact.items.set?id={id}&"
-                                       f"ITEMS[0][CONTACT_ID]={contacts[1]['CONTACT_ID']}&"
-                                       f"ITEMS[0][IS_PRIMARY]=Y&"
-                                       f"ITEMS[0][SORT]=10&"
-                                       f"ITEMS[1][CONTACT_ID]={contacts[0]['CONTACT_ID']}&"
-                                       f"ITEMS[1][IS_PRIMARY]=N&"
-                                       f"ITEMS[1][SORT]=20")
-                            contacts = bitrix.GET(f"crm.deal.contact.items.get?id={id}").json()['result']
-                    i = 0
-                    for cont in contacts:
-                        contact = bitrix.GET(f"crm.contact.get?id={cont['CONTACT_ID']}").json()['result']
-                        if contact['HONORIFIC'] and i == 0:
-                            bitrix.GET(f"crm.requisite.list?"
-                                       f"filter[ENTITY_ID]={contact['ID']}&"
-                                       f"filter[ENTITY_TYPE_ID]=3")
-                            if len(bitrix.result.json()['result']) == 0:
-                                raise Exception(
-                                    f"У контакта {contact['LAST_NAME']} {contact['NAME']} {contact['SECOND_NAME']} "
-                                    f"отсутствует реквизит")
-                            req = bitrix.result.json()['result'][0]
-                            if extDeal['type'] == 2:
-                                if contact['NAME'] != extDeal['headFirstName'] or contact['LAST_NAME'] != extDeal[
-                                    'headLastName'] or \
-                                        contact['SECOND_NAME'] != extDeal['headMiddleName']:
-                                    raise Exception("В сделке с ИП заявителем может быть только директор")
-
-                            # Первый контакт в сделке это заявитель
-                            if i == 0:
-                                # Имя заявителя
-                                extDeal['firstName'] = contact['NAME']
-                                # Фамилия заявителя
-                                extDeal['lastName'] = contact['LAST_NAME']
-                                # Отчество заявителя
-                                extDeal['middleName'] = contact['SECOND_NAME']
-                                # ИНН заявителя
-                                extDeal['personInn'] = req['RQ_INN']
-                                # Серия паспорта
-                                extDeal['passportSerial'] = req['RQ_IDENT_DOC_SER']
-                                # Номер паспорта
-                                extDeal['passportNumber'] = req['RQ_IDENT_DOC_NUM']
-                                # Дата выдачи паспорта
-                                extDeal['passportDate'] = req['RQ_IDENT_DOC_DATE']
-                                # Код подразделения
-                                extDeal['passportCode'] = req['RQ_IDENT_DOC_DEP_CODE']
-                                # Кто выдал паспорт
-                                extDeal['passportDivision'] = ""
-                                # Пол
-                                extDeal['gender'] = "M" if "1" in contact['HONORIFIC'] else "F"
-                                if contact['BIRTHDATE']:
-                                    # Дата рождения
-                                    extDeal['birthDate'] = datetime.datetime.strftime(
-                                        datetime.datetime.strptime(
-                                            contact['BIRTHDATE'][:contact['BIRTHDATE'].index("T")], "%Y-%m-%d"),
-                                        "%d.%m.%Y"
-                                    )
-                                else:
-                                    raise Exception("Укажите дату рождения")
-                                # СНИЛС заявителя
-                                extDeal['snils'] = req['UF_CRM_SNILS'] if req['UF_CRM_SNILS'] else '00000000000'
-                                if extDeal['type'] != 1:
-                                    # Если ФИО заявителя совпадает с ФИО директора
-                                    if extDeal['headLastName'] == extDeal['lastName'] and \
-                                            extDeal['headFirstName'] == extDeal['firstName'] and \
-                                            extDeal['middleName'] == extDeal['headMiddleName']:
-                                        extDeal['position'] = extDeal['headPosition']
-                                    else:
-                                        # Должность заявителя
-                                        extDeal['position'] = contact['POST']
-
-                                # Есть присоединение к оферте
-                                extDeal['offerJoining'] = True
-                                # Способ идентификации 0 - Лично, 1 - по ЭЦП
-                                extDeal['identificationKind'] = 0
-
-                            i += 1
-                            # Проверка, что контакт последний
-                            if len(contacts) == i:
-                                if contact['EMAIL']:
-                                    # Email контакта
-                                    extDeal['email'] = contact['EMAIL'][0]['VALUE']
-                                else:
-                                    raise Exception("Укажите email у контактного лица")
-
-                                if contact['PHONE']:
-                                    # Телефон контакта
-                                    extDeal['phone'] = contact['PHONE'][0]['VALUE'][-10:]
-                                else:
-                                    raise Exception("Укажите номер телефона у контактного лица")
-                        else:
-                            raise Exception(f"Укажите обращение к контакту: "
-                                            f"{contact['LAST_NAME']} {contact['NAME']} {contact['SECOND_NAME']}")
-                    extDeal['products'] = [3344]
-
-                    for key in extDeal:
-                        if extDeal[key] is None:
-                            extDeal[key] = ""
-
-                    extDeal = {"info": extDeal}
-                    # print_json(external)
-                    external.POST("request/create", extDeal)
-                    if external.result.status_code == 200:
-                        fio = f"{extDeal['info']['lastName']} " \
-                              f"{extDeal['info']['firstName']} " \
-                              f"{extDeal['info']['middleName']}"
-                        title = f"АЦ-{external.result.json()['requestId']} / " \
-                                f"{extDeal['info']['company'] if extDeal['info']['type'] > 1 else fio}"
-                        mes = f"[TABLE][TR][TD][B][COLOR=blue]Заявка успешно создана[/COLOR]: [/B][/TD][/TR]" \
-                              f"[TR][TD]Номер заявки {external.result.json()['result']}[/TD][/TR][/TABLE]"
-                        bitrix.GET(f"crm.deal.update?"
-                                   f"id={id}&"
-                                   f"fields[TITLE]={title}&"
-                                   f"fields[ORIGINATOR_ID]=АЦ&"
-                                   f"fields[ORIGIN_ID]={external.result.json()['requestId']}")
-                    else:
-                        mes = f"[TABLE][TR][TD][B][COLOR=blue]Ошибка создания[/COLOR]: [/B][/TD][/TR]" \
-                              f"[TR][TD]{external.result.text}[/TD][/TR][/TABLE]"
-                    # print("</body></html>")
-                except Exception as e:
-                    print(e.args[0])
-                    mes = f"[TABLE][TR][TD][B][COLOR=blue]Ошибка создания[/COLOR]: [/B][/TD][/TR]" \
-                          f"[TR][TD]Проверьте заполненность и корректность всех данных[/TD][/TR]" \
-                          f"[TR][TD][B][COLOR=blue]Обратите внимание! [/COLOR][/B]{e.args[0]}[/TD][/TR][/TABLE]"
-                finally:
-                    fields = dict()
-                    # Id автора комментария
-                    fields["AUTHOR_ID"] = 1
-                    # Комментарий
-                    fields["COMMENT"] = mes
-                    # Тип сущности куда пишется комментарий
-                    fields["ENTITY_TYPE"] = "deal"
-                    # Id сделки
-                    fields["ENTITY_ID"] = id
-                    # Запрос создания комментария
-                    bitrix.GET("crm.timeline.comment.add?" + "&".join(
-                        [f"fields[{key}]={value}" for key, value in fields.items()]))
-
-            elif ch == 7:
-                break
+            # Название организации
+            extDeal['company'] = res['value']
+            if extDeal['type'] == 2:
+                # Фамилия руководителя ИП
+                extDeal['headLastName'] = res['data']['fio']['surname']
+                # Имя руководителя ИП
+                extDeal['headFirstName'] = res['data']['fio']['name']
+                # Отчество руководителя ИП
+                extDeal['headMiddleName'] = res['data']['fio']['patronymic']
+                # Должность руководителя ИП
+                extDeal['headPosition'] = 'Индивидуальный предприниматель'
 
             else:
-                print("Такого варианта нет")
+                fio = res['data']['management']['name']
+                # Фамилия руководителя ЮЛ
+                extDeal['headLastName'] = fio.split()[0]
+                # Имя руководителя ЮЛ
+                extDeal['headFirstName'] = fio.split()[1] if len(fio.split()) > 1 else ""
+                # Отчество руководителя ЮЛ
+                extDeal['headMiddleName'] = " ".join(fio.split()[2:]) if len(fio.split()) > 2 else ""
+                # Должность руководителя ЮЛ
+                extDeal['headPosition'] = res['data']['management']['post']
+                # Номер телефона компании
+                extDeal['companyPhone'] = company['PHONE'][0]['VALUE'][-10:]
 
-        except ConnectionError:
-            print("Connection Error", ConnectionError)
-            f = open(os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop') + "\\Logs.txt", "a")
-            f.write(f"Exit with Connection Error: {datetime.datetime.now()}\t{ConnectionError}\n")
-            f.close()
-            isBreak = True
-            isConnection = True
-            addInf = "Exception with connection"
+            # ИНН организации
+            extDeal['inn'] = req['RQ_INN']
+            # ОГРН организации
+            extDeal['ogrn'] = req['RQ_OGRN'] if extDeal['type'] == 3 else req['RQ_OGRNIP']
+            # external['ogrnip'] = req['RQ_OGRNIP'] if external['type'] == 2 else None
+            # КПП организации
+            extDeal['kpp'] = req['RQ_KPP'] if extDeal['type'] == 3 else ""
+            address = bitrix.GET(f"crm.address.list?"
+                                 f"filter[ENTITY_TYPE_ID]=8&"
+                                 f"filter[TYPE_ID]=6&"
+                                 f"filter[ENTITY_ID]={req['ID']}").json()['result'][0]
 
-        except Exception:
-            print("Something is wrong ", Exception)
-            f = open(os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop') + "\\Logs.txt", "a")
-            f.write(f"Exit with Error: {datetime.datetime.now()}\t{Exception}\n")
-            f.close()
-            isBreak = True
-            addInf = "Exception with code"
+            if extDeal['type'] == 2:
+                # Регион компании
+                extDeal['region'] = extDeal['ogrn'][3:5]
+                # Город компании
+                extDeal['city'] = address['CITY'] if address['CITY'] else address['PROVINCE']
+                # Адрес компании
+                extDeal['address'] = f"{address['ADDRESS_1']}" \
+                                     f"{(', ' + address['ADDRESS_2']) if address['ADDRESS_2'] else ''}" \
+                                     f"".strip()
+            else:
+                # Юридический регион компании
+                extDeal['regionLaw'] = extDeal['ogrn'][3:5] if extDeal['type'] == 3 else extDeal['ogrnip'][
+                                                                                         3:5]
+                # Юридический город компании
+                extDeal['cityLaw'] = address['CITY'] if address['CITY'] else address['PROVINCE']
+                # Юридический адрес компании
+                extDeal['addressLaw'] = f"{address['ADDRESS_1']}" \
+                                        f"{(', ' + address['ADDRESS_2']) if address['ADDRESS_2'] else ''}" \
+                                        f"".strip()
+                extDeal['index'] = address['POSTAL_CODE']
+        else:
+            extDeal['type'] = 1
+            extDeal['address'] = ""
+            extDeal['region'] = 29
 
-        finally:
-            logs_field = dict()
-            logs_field['DateStart'] = start_time
-            logs_field['DateStop'] = datetime.datetime.strftime(datetime.datetime.now(), "%d %b - %H:%M:%S")
-            logs_field['EndResult'] = int(isBreak)
-            logs_field['AdditionalInfo'] = addInf
-            cur.Upd(False, "Logs", logs_field)
+        contacts = bitrix.GET(f"crm.deal.contact.items.get?id={id}").json()['result']
 
+        if len(contacts) > 2:
+            raise Exception("Количество контактов не может быть больше 2: Заявитель и контактное лицо")
+
+        # Проверка контактов ИП
+        if extDeal['type'] == 2:
+            # Получаем первый контакт
+            c = bitrix.GET(f"crm.contact.get?id={contacts[0]['CONTACT_ID']}").json()['result']
+            # Проверяем является ли он директором
+            if c['NAME'] != extDeal['headFirstName'] or c['LAST_NAME'] != extDeal['headLastName'] or c[
+                'SECOND_NAME'] != \
+                    extDeal['headMiddleName']:
+                # Если контакт не ИП, то переставить контакты местами
+                bitrix.GET(f"crm.deal.contact.items.set?id={id}&"
+                           f"ITEMS[0][CONTACT_ID]={contacts[1]['CONTACT_ID']}&"
+                           f"ITEMS[0][IS_PRIMARY]=Y&"
+                           f"ITEMS[0][SORT]=10&"
+                           f"ITEMS[1][CONTACT_ID]={contacts[0]['CONTACT_ID']}&"
+                           f"ITEMS[1][IS_PRIMARY]=N&"
+                           f"ITEMS[1][SORT]=20")
+                contacts = bitrix.GET(f"crm.deal.contact.items.get?id={id}").json()['result']
+        i = 0
+        for cont in contacts:
+            contact = bitrix.GET(f"crm.contact.get?id={cont['CONTACT_ID']}").json()['result']
+            if contact['HONORIFIC'] and i == 0:
+                bitrix.GET(f"crm.requisite.list?"
+                           f"filter[ENTITY_ID]={contact['ID']}&"
+                           f"filter[ENTITY_TYPE_ID]=3")
+                if len(bitrix.result.json()['result']) == 0:
+                    raise Exception(
+                        f"У контакта {contact['LAST_NAME']} {contact['NAME']} {contact['SECOND_NAME']} "
+                        f"отсутствует реквизит")
+                req = bitrix.result.json()['result'][0]
+                if extDeal['type'] == 2:
+                    if contact['NAME'] != extDeal['headFirstName'] or contact['LAST_NAME'] != extDeal[
+                        'headLastName'] or \
+                            contact['SECOND_NAME'] != extDeal['headMiddleName']:
+                        raise Exception("В сделке с ИП заявителем может быть только директор")
+
+                # Первый контакт в сделке это заявитель
+                if i == 0:
+                    # Имя заявителя
+                    extDeal['firstName'] = contact['NAME']
+                    # Фамилия заявителя
+                    extDeal['lastName'] = contact['LAST_NAME']
+                    # Отчество заявителя
+                    extDeal['middleName'] = contact['SECOND_NAME']
+                    # ИНН заявителя
+                    extDeal['personInn'] = req['RQ_INN']
+                    # Серия паспорта
+                    extDeal['passportSerial'] = req['RQ_IDENT_DOC_SER']
+                    # Номер паспорта
+                    extDeal['passportNumber'] = req['RQ_IDENT_DOC_NUM']
+                    # Дата выдачи паспорта
+                    extDeal['passportDate'] = req['RQ_IDENT_DOC_DATE']
+                    # Код подразделения
+                    extDeal['passportCode'] = req['RQ_IDENT_DOC_DEP_CODE']
+                    # Кто выдал паспорт
+                    extDeal['passportDivision'] = ""
+                    # Пол
+                    extDeal['gender'] = "M" if "1" in contact['HONORIFIC'] else "F"
+                    if contact['BIRTHDATE']:
+                        # Дата рождения
+                        extDeal['birthDate'] = datetime.datetime.strftime(
+                            datetime.datetime.strptime(
+                                contact['BIRTHDATE'][:contact['BIRTHDATE'].index("T")], "%Y-%m-%d"),
+                            "%d.%m.%Y"
+                        )
+                    else:
+                        raise Exception("Укажите дату рождения")
+                    # СНИЛС заявителя
+                    extDeal['snils'] = req['UF_CRM_SNILS'] if req['UF_CRM_SNILS'] else '00000000000'
+                    if extDeal['type'] != 1:
+                        # Если ФИО заявителя совпадает с ФИО директора
+                        if extDeal['headLastName'] == extDeal['lastName'] and \
+                                extDeal['headFirstName'] == extDeal['firstName'] and \
+                                extDeal['middleName'] == extDeal['headMiddleName']:
+                            extDeal['position'] = extDeal['headPosition']
+                        else:
+                            # Должность заявителя
+                            extDeal['position'] = contact['POST']
+
+                    # Есть присоединение к оферте
+                    extDeal['offerJoining'] = True
+                    # Способ идентификации 0 - Лично, 1 - по ЭЦП
+                    extDeal['identificationKind'] = 0
+
+                i += 1
+                # Проверка, что контакт последний
+                if len(contacts) == i:
+                    if contact['EMAIL']:
+                        # Email контакта
+                        extDeal['email'] = contact['EMAIL'][0]['VALUE']
+                    else:
+                        raise Exception("Укажите email у контактного лица")
+
+                    if contact['PHONE']:
+                        # Телефон контакта
+                        extDeal['phone'] = contact['PHONE'][0]['VALUE'][-10:]
+                    else:
+                        raise Exception("Укажите номер телефона у контактного лица")
+            else:
+                raise Exception(f"Укажите обращение к контакту: "
+                                f"{contact['LAST_NAME']} {contact['NAME']} {contact['SECOND_NAME']}")
+        extDeal['products'] = [3344]
+
+        for key in extDeal:
+            if extDeal[key] is None:
+                extDeal[key] = ""
+
+        extDeal = {"info": extDeal}
+        external.POST("request/create", extDeal)
+        if external.result.status_code == 200:
+
+            mes = f"[TABLE][TR][TD][B][COLOR=blue]Заявка успешно создана[/COLOR]: [/B][/TD][/TR]" \
+                  f"[TR][TD]Номер заявки {external.result.json()['requestId']}[/TD][/TR][/TABLE]"
+            bitrix.GET(f"crm.deal.update?"
+                       f"id={id}&"
+                       f"fields[ORIGINATOR_ID]=АЦ&"
+                       f"fields[ORIGIN_ID]={external.result.json()['requestId']}")
+        else:
+            mes = f"[TABLE][TR][TD][B][COLOR=blue]Ошибка создания[/COLOR]: [/B][/TD][/TR]" \
+                  f"[TR][TD]{external.result.text}[/TD][/TR][/TABLE]"
+    except Exception as e:
+        print(e.args[0])
+        mes = f"[TABLE][TR][TD][B][COLOR=blue]Ошибка создания[/COLOR]: [/B][/TD][/TR]" \
+              f"[TR][TD]Проверьте заполненность и корректность всех данных[/TD][/TR]" \
+              f"[TR][TD][B][COLOR=blue]Обратите внимание! [/COLOR][/B]{e.args[0]}[/TD][/TR][/TABLE]"
+    finally:
+        fields = dict()
+        # Id автора комментария
+        fields["AUTHOR_ID"] = 1
+        # Комментарий
+        fields["COMMENT"] = mes
+        # Тип сущности куда пишется комментарий
+        fields["ENTITY_TYPE"] = "deal"
+        # Id сделки
+        fields["ENTITY_ID"] = id
+        # Запрос создания комментария
+        bitrix.GET("crm.timeline.comment.add?" + "&".join(
+            [f"fields[{key}]={value}" for key, value in fields.items()]))
+
+        # Обновление всей информации
+        IdAC(external.result.json()['requestId'])
+
+
+if os.path.exists("Info.txt") and os.path.exists("DB.txt"):
+    # Экземпляр класса DAL для работы с БД
+    cur = DAL()
+    isBreak = False
+    isConnection = False
+    start_time = datetime.datetime.now().strftime("%d %b - %H:%M:%S")
+
+    addInf = ""
+
+    if cur:
+        # Экземпляры классов API
+        resp_api = ApiBilly()
+        bitrix = ApiBitrix()
+        external = ApiExternal()
+
+        # Действия доступные пользователю
+        action = {
+            1: "Проверить новости",
+            2: "Создание или обновление 1 сделки",
+            3: "Разбор АЦ УЦ",
+            4: "Разбор АЦ УЦ по конкретной дате",
+            5: "Разбор одной заявки АЦ УЦ по ID",
+            6: "Создание заявки в АЦ",
+            7: "Выход"
+        }
+
+        # Список параметров при запуске программы
+        parameters = sys.argv[1:]
+        # Строка с действиями
+        s_action = '\n'.join([f"{key}) {value}" for key, value in action.items()]) + '\n'
+
+        # Если при запуске программы не были переданы параметры
+        if not parameters:
+            while True:
+                # Выбор действия
+                parameters.append(input(s_action))
+                # Если значение целое число и в промежутке от 1 до 5, то программа идет дальше
+                if parameters[0].isdigit():
+                    if 0 < int(parameters[0]) < len(action.keys()) + 1:
+                        break
+                print(f"Значение <{parameters.pop()}> не корректно, попробуйте ввести значение заново\n")
+
+        # Перебор всех действий
+        for i in range(len(parameters)):
+            print()
+            # Если значение не целое число, то требуем корректировки значения
+            if not parameters[i].isdigit():
+                print(f"Значение <{parameters[i]}> не корректно, попробуйте ввести значение заново\n")
+                while True:
+                    parameters[i] = input(s_action)
+                    # Если значение целое число и в промежутке от 1 до 5, то программа идет дальше
+                    if parameters[i].isdigit():
+                        if 0 < int(parameters[i]) < len(action.keys()) + 1:
+                            break
+
+            # Номер действия
+            ch = int(parameters[i])
+            print(f"Вы выбрали {action[ch]}")
+            try:
+                # Выборка ПП
+                if ch == 1:
+                    Check_News()
+
+                # Создание сделки
+                elif ch == 2:
+                    code = input("Введите код потенциальной продажи:\t").strip()
+                    ProspectiveSaleToDeal(code)
+
+                # Разбор заявок АЦ
+                elif ch == 3:
+                    AllAC()
+
+                # Разбор заявок по дате
+                elif ch == 4:
+                    DateAC()
+
+                # Считывание одной заявки АЦ по ID
+                elif ch == 5:
+                    id = input("Введите номер заявки АЦ:\t").strip()
+                    IdAC(id)
+
+                # Создание заявки АЦ
+                elif ch == 6:
+                    id = input("введите номер сделки в битрикс:\е").strip()
+                    BitrixToAc(id)
+
+                # Выход
+                elif ch == 7:
+                    break
+
+                else:
+                    print("Такого варианта нет")
+
+            except ConnectionError:
+                print("Connection Error", ConnectionError)
+                f = open(os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop') + "\\Logs.txt", "a")
+                f.write(f"Exit with Connection Error: {datetime.datetime.now()}\t{ConnectionError}\n")
+                f.close()
+                isBreak = True
+                isConnection = True
+                addInf = "Exception with connection"
+
+            except Exception:
+                print("Something is wrong ", Exception)
+                f = open(os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop') + "\\Logs.txt", "a")
+                f.write(f"Exit with Error: {datetime.datetime.now()}\t{Exception}\n")
+                f.close()
+                isBreak = True
+                addInf = "Exception with code"
+
+            finally:
+                logs_field = dict()
+                logs_field['DateStart'] = start_time
+                logs_field['DateStop'] = datetime.datetime.strftime(datetime.datetime.now(), "%d %b - %H:%M:%S")
+                logs_field['EndResult'] = int(isBreak)
+                logs_field['AdditionalInfo'] = addInf
+                cur.Upd(False, "Logs", logs_field)
+else:
+    print("Файлы для авторизации не существуют")
 print("Bye-Bye")
 time.sleep(2)
 
 """
-            # Проверка статусов ПП
-            elif ch == 2:
-                completed = []  # Список завершенных ПП
-                # Перебор всех записей таблицы
-                for row in cur.SELECT_ALL("prospectivesales"):
-                    resp_api.GET(resp_api.methods['Find'].replace("{id}", row[0]))  # Поиск информации о ПП
-                    # Проверка статуса ПП
-                    if resp_api.result.json()['Status']['State'] == 2:
-                        completed.append(row[0])
-                    # Проверка канала продажи
-                    if resp_api.result.json()['SalesChannel'] == 2:
-                        # Проверка количества счетов
-                        if len(resp_api.result.json()['Bills']):
-                            isPaid = True  # Флаг оплачено
-                            # Перебор всех счетов
-                            for bill in resp_api.result.json()['Bills']:
-                                isPaid = isPaid and (bill['State'] == 1 or bill['State'] == 3)  # Проверка статуса счета
-                            # Проверка оплаты счета
-                            if isPaid:
-                                # Список этапов
-                                stages = resp_api.result.json()['Stages']
-                                # Проверка выделения этапа
-                                if resp_api.stages[4] in [list(i.values())[0] for i in stages]:
-                                    print("++")
+                # Проверка статусов ПП
+                elif ch == 2:
+                    completed = []  # Список завершенных ПП
+                    # Перебор всех записей таблицы
+                    for row in cur.SELECT_ALL("prospectivesales"):
+                        resp_api.GET(resp_api.methods['Find'].replace("{id}", row[0]))  # Поиск информации о ПП
+                        # Проверка статуса ПП
+                        if resp_api.result.json()['Status']['State'] == 2:
+                            completed.append(row[0])
+                        # Проверка канала продажи
+                        if resp_api.result.json()['SalesChannel'] == 2:
+                            # Проверка количества счетов
+                            if len(resp_api.result.json()['Bills']):
+                                isPaid = True  # Флаг оплачено
+                                # Перебор всех счетов
+                                for bill in resp_api.result.json()['Bills']:
+                                    # Проверка статуса счета
+                                    isPaid = isPaid and (bill['State'] == 1 or bill['State'] == 3)  
+                                # Проверка оплаты счета
+                                if isPaid:
+                                    # Список этапов
+                                    stages = resp_api.result.json()['Stages']
+                                    # Проверка выделения этапа
+                                    if resp_api.stages[4] in [list(i.values())[0] for i in stages]:
+                                        print("++")
+                                    else:
+                                        print("??", row[0])
                                 else:
-                                    print("??", row[0])
+                                    print("+-", row[0])
                             else:
-                                print("+-", row[0])
-                        else:
-                            print("--", row[0])
-                for row in completed:
-                    # cur.EXECUTE(f"DELETE FROM prospectivesales WHERE idProspectiveSales='{row}'")
-                    pass
+                                print("--", row[0])
+                    for row in completed:
+                        # cur.EXECUTE(f"DELETE FROM prospectivesales WHERE idProspectiveSales='{row}'")
+                        pass
 
-            # Создание контактов с реквизитами
-            elif ch == 3:
-                # Выбор всех строк, где Тип клиента 3
-                table = cur.SELECT("Select * from Clients where ClientType = 3")
-                for row in table.fetchall():
-                    # Проверка заполненности ReqId в таблице
-                    if not row[4]:
-                        # Запрос битриксу на поиск клиента по ИНН
+                # Создание контактов с реквизитами
+                elif ch == 3:
+                    # Выбор всех строк, где Тип клиента 3
+                    table = cur.SELECT("Select * from Clients where ClientType = 3")
+                    for row in table.fetchall():
+                        # Проверка заполненности ReqId в таблице
+                        if not row[4]:
+                            # Запрос битриксу на поиск клиента по ИНН
+                            bitrix.GET(f"crm.requisite.list?"
+                                       f"filter[ENTITY_TYPE_ID]=3&"
+                                       f"filter[RQ_INN]={row[1]}")
+                            # Если данные найдены, то внести информацию в БД
+                            if bitrix.result.json()['total'] == 1:
+                                Req = bitrix.result.json()['result'][0]
+                                cur.Upd(
+                                    True,
+                                    "clients",
+                                    f"ReqId = '{Req['ID']}'",
+                                    f"guid = '{row[0]}'")
+                                print(f"{row[1]} have ReqId: {bitrix.result.json()['result'][0]['ID']}")
+                            elif bitrix.result.json()['total'] > 1:
+                                f = open("Need_to_see.txt", "a")
+                                f.writelines(f"\n\n{row[0]:30} | {row[1]:15} HAVE MANY REQ\n\n")
+                                f.close()
+                                print(f"{row[1]} уже существует")
+                                print("https://shturmanit.bitrix24.ru/crm/contact/details/" +
+                                      bitrix.result.json()['result'][0]['ENTITY_ID'] + "/")
+                            # Если данные не найдены, то необходимо его создать
+                            else:
+                                # Выбираем ПП по id организации GUID == idOrganization
+                                cur.SELECT(f"SELECT * FROM prospectivesales WHERE idOrganization = '{row[0]}'")
+                                js = json.loads(cur.cursor.fetchone()[7])
+
+                                CreateContact(js)
+
+                # Удаление и обновление реквизитов в битриксе
+                elif ch == 4:
+                    next_id = 0
+                    # Цикл на удаление реквизитов контактов созданных по шаблону "Организация"
+                    while True:
+                        # Получение выборки Id реквизитов, созданных по шаблону "Организация"
                         bitrix.GET(f"crm.requisite.list?"
                                    f"filter[ENTITY_TYPE_ID]=3&"
-                                   f"filter[RQ_INN]={row[1]}")
-                        # Если данные найдены, то внести информацию в БД
-                        if bitrix.result.json()['total'] == 1:
-                            Req = bitrix.result.json()['result'][0]
-                            cur.Upd(
-                                True,
-                                "clients",
-                                f"ReqId = '{Req['ID']}'",
-                                f"guid = '{row[0]}'")
-                            print(f"{row[1]} have ReqId: {bitrix.result.json()['result'][0]['ID']}")
-                        elif bitrix.result.json()['total'] > 1:
-                            f = open("Need_to_see.txt", "a")
-                            f.writelines(f"\n\n{row[0]:30} | {row[1]:15} HAVE MANY REQ\n\n")
-                            f.close()
-                            print(f"{row[1]} уже существует")
-                            print("https://shturmanit.bitrix24.ru/crm/contact/details/" +
-                                  bitrix.result.json()['result'][0]['ENTITY_ID'] + "/")
-                        # Если данные не найдены, то необходимо его создать
+                                   f"filter[PRESET_ID]=1&"
+                                   f"select[]=ID&"
+                                   f"start = {next_id}")
+                        res = bitrix.result
+                        # Перебор результатов выборки
+                        for reqId in res.json()['result']:
+                            bitrix.GET(f"crm.requisite.delete?id={reqId['ID']}")
+                            print(f"Реквизит {reqId['ID']} удален")
+                        # Проверка на наличие новых реквизитов
+                        if "next" in res.json():
+                            next_id = bitrix.result.json()['next']
                         else:
-                            # Выбираем ПП по id организации GUID == idOrganization
-                            cur.SELECT(f"SELECT * FROM prospectivesales WHERE idOrganization = '{row[0]}'")
-                            js = json.loads(cur.cursor.fetchone()[7])
+                            # Обнуление next_id
+                            nex_id = 0
+                            break
 
-                            CreateContact(js)
+                    # Цикл на обновление реквизитов у которых отсутствуют КПП и ОГРН
+                    while True:
+                        # Получение выборки реквизитов с пустым КПП
+                        bitrix.GET(f"crm.requisite.list?"
+                                   f"filter[ENTITY_TYPE_ID]=4&"
+                                   f"filter[PRESET_ID]=1&"
+                                   f"filter[RQ_KPP]=&"
+                                   f"start={next_id}")
+                        res = bitrix.result.json()
+                        # Перебор значений из выборки
+                        for row in res['result']:
+                            # Получение информации из да-даты
+                            dadata = bitrix.GetInfo(row['RQ_INN'])
+                            # Обновление данных реквизита
+                            bitrix.GET(f"crm.requisite.update?id={row['ID']}&"
+                                       f"fields[RQ_KPP]={dadata['suggestions'][0]['data']['kpp']}&"
+                                       f"fields[RQ_OGRN]={dadata['suggestions'][0]['data']['ogrn']}")
 
-            # Удаление и обновление реквизитов в битриксе
-            elif ch == 4:
-                next_id = 0
-                # Цикл на удаление реквизитов контактов созданных по шаблону "Организация"
-                while True:
-                    # Получение выборки Id реквизитов, созданных по шаблону "Организация"
-                    bitrix.GET(f"crm.requisite.list?"
-                               f"filter[ENTITY_TYPE_ID]=3&"
-                               f"filter[PRESET_ID]=1&"
-                               f"select[]=ID&"
-                               f"start = {next_id}")
-                    res = bitrix.result
-                    # Перебор результатов выборки
-                    for reqId in res.json()['result']:
-                        bitrix.GET(f"crm.requisite.delete?id={reqId['ID']}")
-                        print(f"Реквизит {reqId['ID']} удален")
-                    # Проверка на наличие новых реквизитов
-                    if "next" in res.json():
-                        next_id = bitrix.result.json()['next']
-                    else:
-                        # Обнуление next_id
-                        nex_id = 0
-                        break
-
-                # Цикл на обновление реквизитов у которых отсутствуют КПП и ОГРН
-                while True:
-                    # Получение выборки реквизитов с пустым КПП
-                    bitrix.GET(f"crm.requisite.list?"
-                               f"filter[ENTITY_TYPE_ID]=4&"
-                               f"filter[PRESET_ID]=1&"
-                               f"filter[RQ_KPP]=&"
-                               f"start={next_id}")
-                    res = bitrix.result.json()
-                    # Перебор значений из выборки
-                    for row in res['result']:
-                        # Получение информации из да-даты
-                        dadata = bitrix.GetInfo(row['RQ_INN'])
-                        # Обновление данных реквизита
-                        bitrix.GET(f"crm.requisite.update?id={row['ID']}&"
-                                   f"fields[RQ_KPP]={dadata['suggestions'][0]['data']['kpp']}&"
-                                   f"fields[RQ_OGRN]={dadata['suggestions'][0]['data']['ogrn']}")
-
-                        print(f"Организации {row['RQ_INN']} добавлены КПП и ОГРН")
-                    # Проверка на наличие новых реквизитов
-                    if "next" in res:
-                        next_id = res['next']
-                    else:
-                        break
-
-            # Удаление дублирующихся реквизитов у компаний
-            elif ch == 5:
-                next_id = 0
-                # Список сущностей
-                EntityID = []
-                while True:
-                    bitrix.GET(f"crm.requisite.list?filter[ENTITY_TYPE_ID]=4&filter[PRESET_ID]=1&start={next_id}")
-                    res = bitrix.result.json()
-                    for row in res['result']:
-                        # Если у сущности уже есть реквизит
-                        if row['ENTITY_ID'] in EntityID:
-                            # Удаляем дубликаты из битрикса
-                            bitrix.GET(f"crm.requisite.delete?id={row['ID']}")
-                            print(f"Удален реквизит с id {row['ID']}")
+                            print(f"Организации {row['RQ_INN']} добавлены КПП и ОГРН")
+                        # Проверка на наличие новых реквизитов
+                        if "next" in res:
+                            next_id = res['next']
                         else:
-                            # Добавляем номер сущности в список
-                            EntityID.append(row['ENTITY_ID'])
-                            # Проверка наличия номера реквизита у клиента
-                            if not cur.row_count(f"SELECT * FROM clients "
-                                                 f"WHERE Inn={row['RQ_INN']} and Kpp={row['RQ_KPP']}", False):
-                                # Обновление данных БД
-                                upd_fields = {
-                                    "ReqId": row['ID'],
-                                }
-                                cur.Upd(True, "clients", upd_fields, f"Inn={row['RQ_INN']} and Kpp={row['RQ_KPP']}")
-                                print(f"{row['RQ_INN']} добавлена в БД")
-                    # Проверка на наличие реквизитов
-                    if "next" in res:
-                        next_id = res['next']
-                    else:
-                        break
-    # Действия доступные пользователю
-    action = {
-        1: "Проверить новости",
-        2: "Проверить закрытые продажи",
-        3: "Создать физ лица",
-        4: "Удаление и обновление реквизитов в битриксе",
-        5: "Удаление дублирующихся реквизитов у компаний",
-        6: "Создание или обновление 1 сделки",
-        7: "Разбор АЦ УЦ",
-        8: "Разбор АЦ УЦ по конкретной дате",
-        9: "Разбор одной заявки АЦ УЦ по ID",
-        10: "Выход"
-    }
-"""
+                            break
+
+                # Удаление дублирующихся реквизитов у компаний
+                elif ch == 5:
+                    next_id = 0
+                    # Список сущностей
+                    EntityID = []
+                    while True:
+                        bitrix.GET(f"crm.requisite.list?filter[ENTITY_TYPE_ID]=4&filter[PRESET_ID]=1&start={next_id}")
+                        res = bitrix.result.json()
+                        for row in res['result']:
+                            # Если у сущности уже есть реквизит
+                            if row['ENTITY_ID'] in EntityID:
+                                # Удаляем дубликаты из битрикса
+                                bitrix.GET(f"crm.requisite.delete?id={row['ID']}")
+                                print(f"Удален реквизит с id {row['ID']}")
+                            else:
+                                # Добавляем номер сущности в список
+                                EntityID.append(row['ENTITY_ID'])
+                                # Проверка наличия номера реквизита у клиента
+                                if not cur.row_count(f"SELECT * FROM clients "
+                                                     f"WHERE Inn={row['RQ_INN']} and Kpp={row['RQ_KPP']}", False):
+                                    # Обновление данных БД
+                                    upd_fields = {
+                                        "ReqId": row['ID'],
+                                    }
+                                    cur.Upd(True, "clients", upd_fields, f"Inn={row['RQ_INN']} and Kpp={row['RQ_KPP']}")
+                                    print(f"{row['RQ_INN']} добавлена в БД")
+                        # Проверка на наличие реквизитов
+                        if "next" in res:
+                            next_id = res['next']
+                        else:
+                            break
+        # Действия доступные пользователю
+        action = {
+            1: "Проверить новости",
+            2: "Проверить закрытые продажи",
+            3: "Создать физ лица",
+            4: "Удаление и обновление реквизитов в битриксе",
+            5: "Удаление дублирующихся реквизитов у компаний",
+            6: "Создание или обновление 1 сделки",
+            7: "Разбор АЦ УЦ",
+            8: "Разбор АЦ УЦ по конкретной дате",
+            9: "Разбор одной заявки АЦ УЦ по ID",
+            10: "Выход"
+        }
+    """

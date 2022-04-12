@@ -181,6 +181,40 @@ class ApiBilly:
 
 
 class ApiBitrix:
+    """
+    Класс для работы с API Битрикс24
+
+    Основной URL API  Битрикс
+
+    https://shturmanit.bitrix24.ru
+
+
+    Атрибуты
+    --------
+    stages : dict
+        Соответствие этапов Билли этапам Битрикса
+    typeSale : dict
+        Тип продажи
+    Headers : dict
+        Заголовки для GET запроса
+    result : dict
+        Результат POST/GET запросов
+    methods : dict
+        Методы для работы с API
+    result : request.resp
+        Результат запроса
+
+    Методы
+    --------
+    def GetInfo(self, inn)
+        Метод для получения основной информации о компании
+    def UpdateComp(self, inn)
+        Метод для создания и обновления информации о компании
+    def FindContact(self, email=None, phone=None)
+        Метод поиска и проверка существования контакта
+    def GET(self, url, param=None)
+        Метод для совершения GET запроса
+    """
 
     def __init__(self):
         f = open("Info.txt", "r")
@@ -212,10 +246,18 @@ class ApiBitrix:
     result = None
 
     def GetInfo(self, inn):
+        """
+        Получение информации по компании ИНН
+        :param str inn: ИНН компании
+        """
         time.sleep(0.5)
-        return requests.get(self.URL_dadata + f"?inn={inn}")
+        self.result = requests.get(self.URL_dadata + f"?inn={inn}")
 
     def UpdateComp(self, inn):
+        """
+        Создание или обновление информации компании по ИНН
+        :param str inn: ИНН
+        """
         time.sleep(0.5)
         self.result = requests.get(url=f"http://ke29.ru/comp.php?inn={inn}", timeout=30)
 
@@ -255,16 +297,45 @@ class ApiBitrix:
 
 class ApiExternal:
     """
-    Класс для работы с Api АЦ УЦ
+    Класс для работы с API Битрикс24
+
+    Основной URL API  Битрикс
+
+    https://apinew.iecp.ru/api/external/v2/
+
+
+    Атрибуты
+    --------
+    products : dict
+        Список продуктов
+    URL_external : str
+        URL доступа к API
+    result : dict
+        Объект хранящий результат POST запроса
+    BODY_JSON : dict
+        Объект хранящий данные для запросов
+    stages : dict
+        Список хранящий соответствие этапов
+
+    Методы
+    --------
+    def POST(self, url, json_Body=None)
+        Метод для POST запросов к API
+
     """
 
     def __init__(self):
+
         self.URL_external = "https://apinew.iecp.ru/api/external/v2/"
         self.result = None
+        # Получение данных для подключения
+        f = open("Info.txt", "r")
+        connectionData = f.readlines()[2:]
         self.BODY_JSON = {
-            "login": "2901@iecp.ru",
-            "pass": "wwMJ4WoZBA"
+            "login": connectionData[0][:-1],
+            "pass": connectionData[1][:-1]
         }
+        f.close()
         self.stages = {
             1: "C3:PREPAYMENT_INVOICE",
             4: "C3:WON",
@@ -272,7 +343,7 @@ class ApiExternal:
         }
         self.POST("products")
         # Получение продуктов АЦ
-        self.products =  self.result.json()['products']
+        self.products = self.result.json()['products']
         self.products += [
             {
                 "id": 3336,
