@@ -1,3 +1,5 @@
+#!C:/Users/sale/AppData/Local/Programs/Python/Python310/python.exe
+
 import datetime
 import os
 import sys
@@ -432,9 +434,14 @@ def CreateContact(ProspectiveSales, company_id=None):
     contact_id = 0
 
     # Поиск по ИНН
-    bitrix.GET(f"crm.requisite.list?"
-               f"filter[RQ_INN]={ProspectiveSales['Organization']['Inn']}&"
-               f"filter[ENTITY_TYPE_ID]=3")
+    if "PersonInn" in ProspectiveSales['Organization']:
+        bitrix.GET(f"crm.requisite.list?"
+                   f"filter[RQ_INN]={ProspectiveSales['Organization']['PersonInn']}&"
+                   f"filter[ENTITY_TYPE_ID]=3")
+    else:
+        bitrix.GET(f"crm.requisite.list?"
+                   f"filter[RQ_INN]={ProspectiveSales['Organization']['Inn']}&"
+                   f"filter[ENTITY_TYPE_ID]=3")
 
     if bitrix.result.json()['result']:
         # Получение Id реквизита
@@ -870,8 +877,9 @@ def Check_News():
             if not News['HasMore']:
                 break
         else:
-            print(f'Error: {resp_api.result.status_code} code')
-            break
+            addInf = f'Error: {resp_api.result.status_code} code'
+            print(addInf)
+            raise Exception(addInf)
     # Вывод сообщения с последней меткой
     print("Последняя метка", resp_api.REQ_PARAMS['from'])
     end_time = datetime.datetime.now().strftime('%d %b - %H:%M:%S')
@@ -940,13 +948,13 @@ def AllAC():
 
 
 # Метод разбора заявок АЦ по определенной даты
-def DateAC():
+def DateAC(date):
     """
     Метод создает сделки в битрикс по заявкам определенной даты
     """
     i = 0
     # Получение заявок по дате
-    external.POST("request/list", {"filter": {"createdate": input("Введите дату\n")}})
+    external.POST("request/list", {"filter": {"createdate": date}})
     # Проверка на наличие данных
     if external.result.json()['info']:
         # Перебор всех заявок
@@ -1217,6 +1225,7 @@ def BitrixToAc(id):
 
 
 if os.path.exists("Info.txt") and os.path.exists("DB.txt"):
+
     # Экземпляр класса DAL для работы с БД
     cur = DAL()
     isBreak = False
@@ -1290,7 +1299,8 @@ if os.path.exists("Info.txt") and os.path.exists("DB.txt"):
 
                 # Разбор заявок по дате
                 elif ch == 4:
-                    DateAC()
+                    dat = input("Введите дату (в формате dd.MM.YY):\t").strip()
+                    DateAC(dat)
 
                 # Считывание одной заявки АЦ по ID
                 elif ch == 5:
@@ -1318,13 +1328,13 @@ if os.path.exists("Info.txt") and os.path.exists("DB.txt"):
                 isConnection = True
                 addInf = "Exception with connection"
 
-            except Exception:
-                print("Something is wrong ", Exception)
+            except Exception as e:
+                print("Something is wrong ", e.args[0])
                 f = open(os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop') + "\\Logs.txt", "a")
-                f.write(f"Exit with Error: {datetime.datetime.now()}\t{Exception}\n")
+                f.write(f"Exit with Error: {datetime.datetime.now()}\t{e.args[0]}\n")
                 f.close()
                 isBreak = True
-                addInf = "Exception with code"
+                addInf = e.args[0]
 
             finally:
                 logs_field = dict()
