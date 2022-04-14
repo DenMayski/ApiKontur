@@ -1037,8 +1037,12 @@ def BitrixToAc(id):
                 extDeal['headMiddleName'] = " ".join(fio.split()[2:]) if len(fio.split()) > 2 else ""
                 # Должность руководителя ЮЛ
                 extDeal['headPosition'] = res['data']['management']['post']
+
+            if company['PHONE'][0]:
                 # Номер телефона компании
                 extDeal['companyPhone'] = company['PHONE'][0]['VALUE'][-10:]
+            else:
+                raise Exception("У компании не указан номер телефона")
 
             # ИНН организации
             extDeal['inn'] = req['RQ_INN']
@@ -1052,7 +1056,7 @@ def BitrixToAc(id):
                        f"filter[TYPE_ID]=6&"
                        f"filter[ENTITY_ID]={req['ID']}")
             if bitrix.result.json()['result']:
-               address = bitrix.result.json()['result'][0]
+                address = bitrix.result.json()['result'][0]
             else:
                 raise Exception("У компании отсутствует адрес")
 
