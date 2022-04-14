@@ -252,6 +252,7 @@ class ApiBitrix:
         """
         time.sleep(0.5)
         self.result = requests.get(self.URL_dadata + f"?inn={inn}")
+        return self.result
 
     def UpdateComp(self, inn):
         """

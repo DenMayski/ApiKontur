@@ -1047,10 +1047,14 @@ def BitrixToAc(id):
             # external['ogrnip'] = req['RQ_OGRNIP'] if external['type'] == 2 else None
             # КПП организации
             extDeal['kpp'] = req['RQ_KPP'] if extDeal['type'] == 3 else ""
-            address = bitrix.GET(f"crm.address.list?"
-                                 f"filter[ENTITY_TYPE_ID]=8&"
-                                 f"filter[TYPE_ID]=6&"
-                                 f"filter[ENTITY_ID]={req['ID']}").json()['result'][0]
+            bitrix.GET(f"crm.address.list?"
+                       f"filter[ENTITY_TYPE_ID]=8&"
+                       f"filter[TYPE_ID]=6&"
+                       f"filter[ENTITY_ID]={req['ID']}")
+            if bitrix.result.json()['result']:
+               address = bitrix.result.json()['result'][0]
+            else:
+                raise Exception("У компании отсутствует адрес")
 
             if extDeal['type'] == 2:
                 # Регион компании
@@ -1309,7 +1313,7 @@ if os.path.exists("Info.txt") and os.path.exists("DB.txt"):
 
                 # Создание заявки АЦ
                 elif ch == 6:
-                    id = input("введите номер сделки в битрикс:\е").strip()
+                    id = input("введите номер сделки в битрикс:\t").strip()
                     BitrixToAc(id)
 
                 # Выход
