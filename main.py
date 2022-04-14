@@ -1062,7 +1062,7 @@ def BitrixToAc(id):
 
             if extDeal['type'] == 2:
                 # Регион компании
-                extDeal['region'] = extDeal['ogrn'][3:5]
+                extDeal['region'] = res['data']['address']['data']['region_kladr_id'][:2]
                 # Город компании
                 extDeal['city'] = address['CITY'] if address['CITY'] else address['PROVINCE']
                 # Адрес компании
@@ -1071,8 +1071,7 @@ def BitrixToAc(id):
                                      f"".strip()
             else:
                 # Юридический регион компании
-                extDeal['regionLaw'] = extDeal['ogrn'][3:5] if extDeal['type'] == 3 else extDeal['ogrnip'][
-                                                                                         3:5]
+                extDeal['regionLaw'] = res['data']['address']['data']['region_kladr_id'][:2]
                 # Юридический город компании
                 extDeal['cityLaw'] = address['CITY'] if address['CITY'] else address['PROVINCE']
                 # Юридический адрес компании
@@ -1193,7 +1192,7 @@ def BitrixToAc(id):
         extDeal['products'] = [3344]
 
         for key in extDeal:
-            if extDeal[key] is None:
+            if extDeal[key] is None or extDeal[key] == 'None':
                 extDeal[key] = ""
 
         extDeal = {"info": extDeal}
