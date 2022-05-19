@@ -381,3 +381,55 @@ class ApiExternal:
         except requests.exceptions.Timeout as TimeOut:
             print("TimeOut", TimeOut)
             self.result.status_code = 504
+
+
+class ApiOrder:
+
+    def __init__(self):
+        """
+        Конструктор класса, при инициализации записывает метку времени
+        """
+        # Заголовок с ключом токеном для подключения
+        self.HEADERS_AUTH = {"x-Auth-CustomToken": "d8738ad8-d36b-11e7-baf5-77141aa05f0f"}
+        self.Url = 'https://api-billy.testkontur.ru/'
+
+    # Результат запросов
+    result = None
+
+    def GET(self, url, param=None):
+        """
+        Метод для GET запроса
+        :param str url: Адрес на который будет совершен запрос
+        :param dict param: Параметры которые необходимо передать в GET запросе
+        :return:  Возвращает результат запроса
+        :rtype: requests.Response
+        """
+        try:
+            self.result = requests.get(url=self.Url + url, headers=self.HEADERS_AUTH, params=param, timeout=30)
+        except requests.exceptions.ConnectionError as ConErr:
+            print("Connection Error", ConErr)
+            print(url)
+            self.result.status_code = 400
+        except requests.exceptions.Timeout as TimeOut:
+            print("TimeOut", TimeOut)
+            self.result.status_code = 504
+        finally:
+            return self.result
+
+    def POST(self, url, bodyJSON):
+        """
+        Метод для POST запроса
+        :param str url: Адрес на который будет совершен запрос
+        :param dict bodyJSON: Тело запроса 
+        :return: Возвращает результат запроса
+        :rtype: requests.Response
+        """
+        try:
+            self.result = requests.post(url=url, headers=self.HEADERS_AUTH, json=bodyJSON)
+        except requests.exceptions.ConnectionError as ConErr:
+            print("Connection Error", ConErr)
+            print(url)
+            self.result.status_code = 400
+        except requests.exceptions.Timeout as TimeOut:
+            print("TimeOut", TimeOut)
+            self.result.status_code = 504

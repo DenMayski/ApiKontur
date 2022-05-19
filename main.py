@@ -1,5 +1,3 @@
-#!C:/Users/sale/AppData/Local/Programs/Python/Python310/python.exe
-
 import datetime
 import os
 import sys
@@ -12,7 +10,7 @@ import time
 
 # import numpy as np
 
-from API import ApiBilly, ApiBitrix, ApiExternal
+from API import ApiBilly, ApiBitrix, ApiExternal, ApiOrder
 from DAL import DAL
 
 
@@ -25,22 +23,22 @@ def print_json(js, ch=""):
     :return:
     """
     if isinstance(js, dict):
-        print(f"{ch}{'{'}")
+        print(f"<p>{ch}{'{'}</p>")
         for key, val in js.items():
             if isinstance(val, dict):
-                print(f"{ch}\t{key} :")
+                print(f"<p>{ch}\t{key} :</p>")
                 print_json(val, "\t" + ch)
             elif isinstance(val, list):
-                print(f"{ch}\t{key} :")
-                print(f"{ch}\t[")
+                print(f"<p>{ch}\t{key} :</p>")
+                print(f"<p>{ch}\t[</p>")
                 for v in val:
                     print_json(v, "\t" + ch)
-                print(f"{ch}\t]")
+                print(f"<p>{ch}\t]</p>")
             else:
-                print(f"{ch}\t{key} : {val};")
-        print(f"{ch}{'}'}")
+                print(f"<p>{ch}\t{key} : {val};</p>")
+        print(f"<p>{ch}{'}'}</p>")
     else:
-        print(f"{ch}\t{js};")
+        print(f"<p>{ch}\t{js};</p>")
 
 
 # Метод формирования строки для запроса
@@ -156,7 +154,7 @@ def BillyToBitrix(ProspectiveSale):
             elif ProspectiveSale['Organization']['Type'] == 3:
                 contact_id = CreateContact(ProspectiveSale)
             else:
-                print("Проверьте корректность потенциальной продажи")
+                print("<p>Проверьте корректность потенциальной продажи</p>")
                 return False
         else:
             # Проверка на ФЛ
@@ -189,8 +187,9 @@ def BillyToBitrix(ProspectiveSale):
         link = f"https://lk.iecp.ru/application/{ProspectiveSale['Id']}"
 
     else:
+        createDate = datetime.datetime.strptime(ProspectiveSale['CreateTime'], "%Y-%m-%dT%H:%M:%S").strftime("%y.%m.%d")
         #  Формирование наименования сделки
-        name = f"{ProspectiveSale['Product']['Name']} / {ProspectiveSale['Organization']['Name']}"
+        name = f"{ProspectiveSale['Product']['Name']} / {createDate} /{ProspectiveSale['Organization']['Name']}"
         # Ссылка на сделку
         link = f"https://billy-partners.kontur.ru/prospectivesale/{ProspectiveSale['Id']}"
 
@@ -224,6 +223,10 @@ def BillyToBitrix(ProspectiveSale):
                 stageId = bitrix.stages[ProspectiveSale['Stages'][len(ProspectiveSale['Stages']) - 1]['StageId']]
             else:
                 stageId = "C2:NEW"
+
+            # Если сделка провалена
+            if ProspectiveSale['Status']['State'] == 4:
+                stageId = "C2:LOSE"
 
         # Id продукта в Битрикс24 по Id Биллинга
         SkbProd = cur.SELECT(f"SELECT id_Bitrix "
@@ -356,10 +359,7 @@ def BillyToBitrix(ProspectiveSale):
             CreateComments(ProspectiveSale)
         else:
             # Вывод сообщение об ошибке выполнения запроса
-            print(ProspectiveSale['Id'], "ошибка создания ", bitrix.result)
-            f = open("Error_PotentialSales.txt", "a")
-            f.writelines(f"{ProspectiveSale['Id']}, ошибка создания, {bitrix.result}\n")
-            f.close()
+            print("<p>", ProspectiveSale['Id'], "ошибка создания ", bitrix.result, "</p>")
 
 
 # Метод создания контакта
@@ -430,18 +430,16 @@ def CreateContact(ProspectiveSales, company_id=None):
         cont_fields['BIRTHDATE'] = ProspectiveSales['Documents']['Birthdate']
         # Пол
         cont_fields['HONORIFIC'] = ProspectiveSales['Documents']['Gender']
+        inn = ProspectiveSales['Organization']['PersonInn']
+    else:
+        inn = ProspectiveSales['Organization']['Inn']
 
     contact_id = 0
 
     # Поиск по ИНН
-    if "PersonInn" in ProspectiveSales['Organization']:
-        bitrix.GET(f"crm.requisite.list?"
-                   f"filter[RQ_INN]={ProspectiveSales['Organization']['PersonInn']}&"
-                   f"filter[ENTITY_TYPE_ID]=3")
-    else:
-        bitrix.GET(f"crm.requisite.list?"
-                   f"filter[RQ_INN]={ProspectiveSales['Organization']['Inn']}&"
-                   f"filter[ENTITY_TYPE_ID]=3")
+    bitrix.GET(f"crm.requisite.list?"
+               f"filter[RQ_INN]={inn}&"
+               f"filter[ENTITY_TYPE_ID]=3")
 
     if bitrix.result.json()['result']:
         # Получение Id реквизита
@@ -650,10 +648,10 @@ def CreateContact(ProspectiveSales, company_id=None):
             req_fields['UF_CRM_BILLY'] = ProspectiveSales['Id']
 
         # Создание реквизита для контакта
-        if reqId == 0:
-            bitrix.GET(f"crm.requisite.add?" + FieldsString(req_fields))
-        else:
+        if reqId:
             bitrix.GET(f"crm.requisite.update?id={reqId}" + FieldsString(req_fields))
+        else:
+            bitrix.GET(f"crm.requisite.add?" + FieldsString(req_fields))
 
     return contact_id
 
@@ -852,9 +850,8 @@ def Check_News():
     """
     Метод считывания новостей билли и создания сделок в Битрикс
     """
-    global f
-    print(f"Время начала: {start_time}")
-    print(f"Метка времени {resp_api.REQ_PARAMS['from']}")
+    print(f"<p>Время начала: {start_time}</p>")
+    print(f"<p>Метка времени {resp_api.REQ_PARAMS['from']}</p>")
     j = 0
     # Запрос к API Контура
     while True:
@@ -862,15 +859,18 @@ def Check_News():
         if resp_api.GET(resp_api.methods['News'], resp_api.REQ_PARAMS).status_code == 200:
             News = resp_api.result.json()
             for fields in News['News']:
-                # Проверка наличия ИНН
-                if fields['Organization']['Inn']:
-                    # Если тип ПП Подключение, Продление или Допродажа
-                    if fields['Type'] < 4:
-                        # То создание сделки
-                        BillyToBitrix(fields)
-                        # Счетчик сделок
-                        j += 1
-                        print(f"Обработано {j} новостей")
+                if fields['Partner']:
+                    if fields['Partner']['Code'] != "0680":
+                        continue
+                    # Проверка наличия ИНН
+                    if fields['Organization']['Inn']:
+                        # Если тип ПП Подключение, Продление или Допродажа
+                        if fields['Type'] < 4:
+                            # То создание сделки
+                            BillyToBitrix(fields)
+                            # Счетчик сделок
+                            j += 1
+            print(f"<p>Обработано {j} новостей</p>")
             # Обновление параметра временной метки запроса
             resp_api.UpdateTimeStamp(News['NextTimestamp'])
             # Проверка на наличие новых данных
@@ -878,16 +878,12 @@ def Check_News():
                 break
         else:
             addInf = f'Error: {resp_api.result.status_code} code'
-            print(addInf)
+            print(f"<p>{addInf}</p>")
             raise Exception(addInf)
     # Вывод сообщения с последней меткой
-    print("Последняя метка", resp_api.REQ_PARAMS['from'])
+    print("<p>Последняя метка", resp_api.REQ_PARAMS['from'], "</p>")
     end_time = datetime.datetime.now().strftime('%d %b - %H:%M:%S')
-    print(f"Время окончания {end_time}")
-    f = open(os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop') + "\\Logs.txt", "a")
-    f.write(
-        f"start: {start_time:20}\t| end: {end_time:20}\t| lasttimestamp: {resp_api.REQ_PARAMS['from']}\n")
-    f.close()
+    print(f"<p>Время окончания {end_time}</p>")
 
 
 # Метод проверки новости конкретной сделки
@@ -901,8 +897,9 @@ def ProspectiveSaleToDeal(codpp):
     # Если ПП найдена, то создание сделки
     if "errors" not in ProspectiveSales:
         BillyToBitrix(ProspectiveSales)
+        print("<h3>Сделка обновлена</h3>")
     else:
-        print("Ничего не найдено")
+        print("<h3>Ничего не найдено</h3>")
 
 
 # Метод разбора всех заявок АЦ
@@ -941,10 +938,10 @@ def AllAC():
                 # Создание сделки
                 BillyToBitrix(ProspectiveSale)
                 i += 1
-                print(f"Обработано сделок {i}", row['requestId'])
         # Изменение даты
         days = datetime.timedelta(days=days.days + 1)
         createDate = (start + days).date()
+    print(f"<p>Обработано {i} заявок</p>")
 
 
 # Метод разбора заявок АЦ по определенной даты
@@ -966,7 +963,7 @@ def DateAC(date):
             # Создание сделки
             BillyToBitrix(ProspectiveSale)
             i += 1
-            print("Обработано", i, ProspectiveSale['Id'])
+        print("<p>Обработано", i, "заявок", "</p>")
 
 
 # Метод разбора заявки АЦ по номеру
@@ -1038,11 +1035,11 @@ def BitrixToAc(id):
                 # Должность руководителя ЮЛ
                 extDeal['headPosition'] = res['data']['management']['post']
 
-            if company['PHONE'][0]:
+            if 'PHONE' in company:
                 # Номер телефона компании
                 extDeal['companyPhone'] = company['PHONE'][0]['VALUE'][-10:]
             else:
-                raise Exception("У компании не указан номер телефона")
+                extDeal['companyPhone'] = '0000000000'
 
             # ИНН организации
             extDeal['inn'] = req['RQ_INN']
@@ -1184,6 +1181,8 @@ def BitrixToAc(id):
                     if contact['PHONE']:
                         # Телефон контакта
                         extDeal['phone'] = contact['PHONE'][0]['VALUE'][-10:]
+                        if extDeal['type'] == 2:
+                            extDeal['companyPhone'] = extDeal['phone']
                     else:
                         raise Exception("Укажите номер телефона у контактного лица")
             else:
@@ -1209,7 +1208,7 @@ def BitrixToAc(id):
             mes = f"[TABLE][TR][TD][B][COLOR=blue]Ошибка создания[/COLOR]: [/B][/TD][/TR]" \
                   f"[TR][TD]{external.result.text}[/TD][/TR][/TABLE]"
     except Exception as e:
-        print(e.args[0])
+        print(f"<p>{e.args[0]}</p>")
         mes = f"[TABLE][TR][TD][B][COLOR=blue]Ошибка создания[/COLOR]: [/B][/TD][/TR]" \
               f"[TR][TD]Проверьте заполненность и корректность всех данных[/TD][/TR]" \
               f"[TR][TD][B][COLOR=blue]Обратите внимание! [/COLOR][/B]{e.args[0]}[/TD][/TR][/TABLE]"
@@ -1246,6 +1245,7 @@ if os.path.exists("Info.txt") and os.path.exists("DB.txt"):
         resp_api = ApiBilly()
         bitrix = ApiBitrix()
         external = ApiExternal()
+        order = ApiOrder()
 
         # Действия доступные пользователю
         action = {
@@ -1255,7 +1255,8 @@ if os.path.exists("Info.txt") and os.path.exists("DB.txt"):
             4: "Разбор АЦ УЦ по конкретной дате",
             5: "Разбор одной заявки АЦ УЦ по ID",
             6: "Создание заявки в АЦ",
-            7: "Выход"
+            7: "Api Заказов",
+            8: "Выход"
         }
 
         # Список параметров при запуске программы
@@ -1290,6 +1291,7 @@ if os.path.exists("Info.txt") and os.path.exists("DB.txt"):
             # Номер действия
             ch = int(parameters[i])
             print(f"Вы выбрали {action[ch]}")
+            addInf = f"Choose : {ch}"
             try:
                 # Выборка ПП
                 if ch == 1:
@@ -1298,6 +1300,7 @@ if os.path.exists("Info.txt") and os.path.exists("DB.txt"):
                 # Создание сделки
                 elif ch == 2:
                     code = input("Введите код потенциальной продажи:\t").strip()
+                    addInf += " / " + code
                     ProspectiveSaleToDeal(code)
 
                 # Разбор заявок АЦ
@@ -1312,15 +1315,22 @@ if os.path.exists("Info.txt") and os.path.exists("DB.txt"):
                 # Считывание одной заявки АЦ по ID
                 elif ch == 5:
                     id = input("Введите номер заявки АЦ:\t").strip()
+                    addInf += " / " + id
                     IdAC(id)
 
                 # Создание заявки АЦ
                 elif ch == 6:
                     id = input("введите номер сделки в битрикс:\t").strip()
+                    addInf += " / " + id
                     BitrixToAc(id)
 
-                # Выход
+                # Бронирование
                 elif ch == 7:
+                    order.GET("absents/v0/abonents?inn=2901286535&kpp=290101002")
+                    print(order.result.json())
+
+                # Выход
+                elif ch == 8:
                     break
 
                 else:
