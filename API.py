@@ -1,3 +1,4 @@
+import json
 import time
 import io
 
@@ -390,8 +391,8 @@ class ApiOrder:
         Конструктор класса, при инициализации записывает метку времени
         """
         # Заголовок с ключом токеном для подключения
-        self.HEADERS_AUTH = {"x-Auth-CustomToken": "d8738ad8-d36b-11e7-baf5-77141aa05f0f"}
-        self.Url = 'https://api-billy.testkontur.ru/'
+        self.HEADERS_AUTH = {"x-Auth-CustomToken": "9ab474b4-c588-4d5f-887e-4cd5b583ad92"}
+        self.Url = 'https://billy-publicapi.kontur.ru/'
 
     # Результат запросов
     result = None
@@ -433,3 +434,263 @@ class ApiOrder:
         except requests.exceptions.Timeout as TimeOut:
             print("TimeOut", TimeOut)
             self.result.status_code = 504
+
+    def UpdateClient(self, requisite=None, Inn=None, ClientType=None):
+        """
+        Метод для обновления данных по клиенту. В карточку клиента дописывает AbonentId и записывает BillyId в реквизит
+        :param dict requisite: Реквизиты клиента
+        :param str Inn: Инн клиента передается в паре с ClientType
+        :param int ClientType: Тип клиента 3 - Физ. лицо, 4 - Организация (ИП или ЮЛ)
+        :rtype: dict
+        :return: Возвращает пару результат и сообщение
+        """
+        # Проверка переданных параметров
+        bit = ApiBitrix()
+
+        if requisite is None:
+            # Проверка заполненности ИНН и типа
+            if Inn and ClientType:
+                # Проверка типа клиента
+                if ClientType == 3 or ClientType == 4:
+                    # Поиск в битриксе реквизита
+                    bit.GET(f"crm.requisite.list?select[]=ID&select[]=ENTITY_TYPE_ID&select[]=ENTITY_ID&"
+                            f"select[]=PRESET_ID&select[]=RQ_INN&select[]=RQ_KPP&select[]=UF_CRM_BILLY&"
+                            f"filter[ENTITY_TYPE_ID]={ClientType}&filter[RQ_INN]={Inn}")
+                    # Проверка результата поиска
+                    if bit.result.status_code == 200:
+                        if bit.result.json()['total'] == 1:
+                            requisite = bit.result.json()['result'][0]
+                        elif bit.result.json()['total'] == 0:
+                            return {'result': False, 'message': "По переданным ИНН и типу клиента ничего не найдено"}
+                        else:
+                            return {'result': False,
+                                    'message': f"Найдено {bit.result.json()['total']} реквизитов по ИНН и типу"}
+                    else:
+                        return {'result': False, 'message': f"Ошибка {bit.result.status_code} {bit.result.text}"}
+                else:
+                    return {'result': False, 'message': f"Тип клиента должен быть 3 (ФЛ) или 4 (ИП или ЮЛ)"}
+            else:
+                return {'result': False, 'message': f"Ошибка не указан ИНН или тип клиента"}
+        # Проверка наличия всех полей
+        if not {'ID', 'ENTITY_TYPE_ID', 'ENTITY_ID', 'PRESET_ID',
+                'RQ_INN', 'RQ_KPP', 'UF_CRM_BILLY'} <= set(requisite.keys()):
+            return {'result': False, 'message': f"В переданных реквизитах {requisite} не хватает полей"}
+        # Проверяем реквизит на соответствие шаблонам
+        if requisite['ENTITY_TYPE_ID'] == '4':
+            method = "company"
+            # Компания ЮЛ
+            if requisite['PRESET_ID'] == '1':
+                if requisite['RQ_KPP'] == '':
+                    return {'result': False, 'message': f"У Юридического лица {requisite['ENTITY_ID']} не указан КПП. "
+                                                        f"Измените тип на ИП или заполните КПП"}
+            # Компания ИП
+            elif requisite['PRESET_ID'] == '3':
+                if requisite['RQ_KPP']:
+                    return {'result': False,
+                            'message': f"У Индивидуального предпринимателя {requisite['ENTITY_ID']} указан КПП. "
+                                       f"Измените тип на ЮЛ или заполните КПП"}
+            else:
+                return {'result': False,
+                        'message': f"У компании {requisite['ENTITY_ID']} указан неверный тип реквизита. "
+                                   f"Измените тип на ЮЛ или ИП"}
+        elif requisite['ENTITY_TYPE_ID'] == '3':
+            # Клиент ФЛ
+            if requisite['PRESET_ID'] == '5':
+                method = "contact"
+            else:
+                return {
+                    False: f"У контакта {requisite['ENTITY_ID']} указан не правильный тип реквизита. "
+                           f"Измените тип на ФЛ."}
+        else:
+            return {'result': False,
+                    'message': f"Переданный реквизит {requisite} не относится к компании или контакту. "
+                               "Проверьте корректность передаваемого реквизита"}
+        # Поиск клиента по Id
+        bit.GET(f"crm.{method}.get?id={requisite['ENTITY_ID']}")
+        if bit.result.status_code == 200:
+            client = bit.result.json()['result']
+            # Поиск абонента в Биллинге
+            if requisite['PRESET_ID'] == '5':
+                # Проверка, что контакт является клиентом
+                if client['TYPE_ID'] == "CLIENT":
+                    self.GET(f"abonents/v0/abonents?inn={requisite['RQ_INN']}").json()
+                else:
+                    return {'result': False,
+                            'message': f"Переданный контакт {requisite['ENTITY_ID']} не является \"Клиентом\""}
+            elif requisite['PRESET_ID'] == '1' or requisite['PRESET_ID'] == '3':
+                # Проверка, что компания является клиентом
+                if client['COMPANY_TYPE'] == "CUSTOMER":
+                    self.GET(f"abonents/v0/abonents?inn={requisite['RQ_INN']}&"
+                             f"kpp={requisite['RQ_KPP'] if str(requisite['RQ_KPP']) else ''}").json()
+                else:
+                    return {'result': False,
+                            'message': f"Переданная компания {requisite['ENTITY_ID']} не является \"Клиентом\""}
+            # Если абонент клиента найден
+            if self.result.status_code == 200:
+                abonents = self.result.json()
+                reqHead = ''
+                # Перебор абонентов
+                for j in abonents:
+                    reqStr = ''
+                    # Если клиент компания
+                    if requisite['ENTITY_TYPE_ID'] == '4':
+                        # Если компания ЮЛ
+                        if requisite['PRESET_ID'] == '1':
+                            # Проверка является ли абонент головной организацией
+                            if j['requisites']['kpp']['organizationKppType'] == 1:
+                                # BillyId головы
+                                reqHead = j['requisites']['requisiteId']
+                        # Проверка заполненности BillyId
+                        if requisite['UF_CRM_BILLY'] is None:
+                            if len(abonents) == 1:
+                                # Присвоить значение BillyId если всего 1 абонент связан с клиентом
+                                requisite['UF_CRM_BILLY'] = j['requisites']['requisiteId']
+                            else:
+                                return {'result': False, 'message': 'У клиента не указан requisiteId биллинга'}
+                        # Проверка соответствия BillyId абонента и клиента
+                        if j['requisites']['requisiteId'] == requisite['UF_CRM_BILLY'][-36:]:
+                            # Формирование строки для обновления реквизита
+                            reqStr = f"crm.requisite.update?id={requisite['ID']}&" \
+                                     f"fields[UF_CRM_BILLY]={j['requisites']['requisiteId']}&"
+                            #
+                            reqStr += f"fields[RQ_KPP]={j['requisites']['kpp']['value']}" if requisite[
+                                                                                                 'PRESET_ID'] == '1' \
+                                else f"fields[RQ_KPP]={j['requisites']['kpp']}"
+                            bit.GET(reqStr)
+                    else:
+                        if j['requisites']['clientType'] == 3:
+                            # Обновление реквизита
+                            reqStr = f"crm.requisite.update?id={requisite['ID']}&" \
+                                     f"fields[UF_CRM_BILLY]={j['requisites']['requisiteId']}"
+                            bit.GET(reqStr)
+                    # Проверка на обновление реквизита
+                    if reqStr:
+                        # Формирование строки на обновление клиента
+                        reqStr = f"crm.{method}.update?id={client['ID']}&fields[UF_CRM_ABONENTID]={j['abonentId']}"
+                        # Проверка на то что компания является филиалом
+                        if requisite['PRESET_ID'] == '1' and requisite['RQ_KPP'][4:6] != '01' and reqHead:
+                            bit.GET(f"crm.requisite.list?filter[?UF_CRM_BILLY]={reqHead}")
+                            if bit.result.json()['total'] == 1:
+                                reqStr += f"&fields[UF_CRM_PARENTCOMPANY_ID]=" \
+                                          f"{bit.result.json()['result'][0]['ENTITY_ID']}"
+                        # Обновление карточки клиента
+                        bit.GET(reqStr)
+        else:
+            return {'result': False, 'message': f"У клиента {requisite} не найден абонент"}
+        return {'result': True, 'message': f"Обновление прошло успешно. "
+                                           f"Id реквизита: {requisite['ID']}, "
+                                           f"Тип сущности: {requisite['ENTITY_TYPE_ID']}, "
+                                           f"Id сущности: {requisite['ENTITY_ID']}"}
+
+
+class ApiDocuments:
+    """
+    Класс для работы с API Kontur CRM
+
+    Основной URL API  KONTUR.CRM
+
+    https://api-crm-billing.kontur.ru
+
+
+    Атрибуты
+    --------
+    REQ_PARAMS : dict
+        Параметры запроса GET
+    HEADERS_AUTH : dict
+        Заголовки запросов
+    stages : dict
+        Значения этапов продаж
+    methods : dict
+        Методы для работы с API
+    result : request.resp
+        Результат запроса
+    cursor : pymysql.Connection
+        Курсор для работы с БД
+
+    Методы
+    --------
+    def UpdateTimeStamp()
+        Метод обновления метки времени в параметрах и БД
+    def CheckStage(stage, idPs)
+        Метод для смены этапа ПП
+    def POST(url)
+        Метод запроса POST
+    def GET(url, param=None)
+        Метод запроса GET
+    """
+
+    def __init__(self):
+        """
+        Конструктор класса, при инициализации записывает метку времени
+        """
+
+        self.cursor = DAL()
+        f = open("Info.txt", "r")
+        # Заголовок с ключом токеном для подключения
+        self.HEADERS_AUTH = {"x-Auth-CustomToken": f.readlines()[0][:-1]}
+        self.result = None
+        self.URL = "https://billy-publicapi.kontur.ru/"
+        f.close()
+        self.DocType = {
+            1: "Счет - оферта",
+            2: "Счет",
+            5: "Акт",
+            6: "Счет - фактура",
+            7: "Счет - фактура на аванс",
+            8: "Договор",
+            9: "Приложение к договору",
+            10: "Сублицензионный договор",
+            11: "Спецификация",
+            12: "Список лицензиаров",
+            13: "Лицензия криптопровайдера",
+            14: "Дополнительное соглашение к договору",
+            15: "Лицензионный договор",
+            16: "УПД"
+        }
+
+    def GET(self, url, param=None):
+        """
+        Метод для GET запроса
+        :param str url: Адрес на который будет совершен запрос
+        :param dict param: Параметры которые необходимо передать в GET запросе
+        :return:  Возвращает результат запроса
+        :rtype: requests.Response
+        """
+        try:
+            self.result = requests.get(url=self.URL + url, headers=self.HEADERS_AUTH, params=param, timeout=30)
+        except requests.exceptions.ConnectionError as ConErr:
+            print("Connection Error", ConErr)
+            print(url)
+            self.result.status_code = 400
+        except requests.exceptions.Timeout as TimeOut:
+            print("TimeOut", TimeOut)
+            self.result.status_code = 504
+        finally:
+            return self.result
+
+    def POST(self, url, body):
+        """
+        Метод для POST запроса
+        :param str url: Адрес на который будет совершен запрос
+        :param dict body: Тело POST запроса
+        :return: Возвращает результат запроса
+        :rtype: requests.Response
+        """
+        try:
+            self.result = requests.post(url=self.URL + url, headers=self.HEADERS_AUTH, json=body)
+        except requests.exceptions.ConnectionError as ConErr:
+            print("Connection Error", ConErr)
+            print(url)
+        except requests.exceptions.Timeout as TimeOut:
+            print("TimeOut", TimeOut)
+        return self.result
+
+    def DocumentInfo(self, billId):
+        self.GET(f"documents/v2/bills/{billId}/documents/package")
+        if self.result.status_code == 200:
+            doc = self.result.json()['Documents']
+            body = list()
+            for i in doc:
+                body.append(i['DocumentKey'])
+            # body = json.dumps(body)
+            self.POST(f"documents/v2/bills/{billId}/documents/info", body)
