@@ -1,5 +1,4 @@
 import pymysql
-import io
 
 
 class DAL:
@@ -41,7 +40,7 @@ class DAL:
                     password=conn_data[2],
                     database=conn_data[3]
                 )
-            except:
+            except Exception:
                 self.con = pymysql.connect(
                     host="localhost",
                     user="root",
@@ -50,7 +49,7 @@ class DAL:
                 )
         except pymysql.err.MySQLError:
             self.cursor = None
-            print("Ошибка подключения к БД")
+            print("<p>Ошибка подключения к БД</p>")
         else:
             self.cursor = self.con.cursor()
 
@@ -74,7 +73,7 @@ class DAL:
             self.SELECT(sql_query)
         return self.cursor.rowcount
 
-    def Upd(self, isUpdate, tablename, field_value, where=None):
+    def Upd(self, tablename, field_value, isUpdate, where=None):
         """
         Метод на запись или обновление данных
         :param bool isUpdate: Является ли запрос - запросом на обновление
@@ -100,7 +99,7 @@ class DAL:
         try:
             self.cursor.execute(sql_query)
         except pymysql.err.ProgrammingError as err:
-            print(err)
+            print(f"<p>{err}</p>")
         return self.cursor
 
     def SELECT_ALL(self, tablename):
@@ -122,8 +121,8 @@ class DAL:
             self.cursor.execute(sql)
             self.con.commit()
         except pymysql.err.ProgrammingError as err:
-            print(err)
-            print(sql)
+            print(f"<p>{err}</p>")
+            print(f"<p>{sql}</p>")
         except pymysql.err.MySQLError as err:
-            print(err)
-            print(sql)
+            print(f"<p>{err}</p>")
+            print(f"<p>{sql}</p>")
