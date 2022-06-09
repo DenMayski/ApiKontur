@@ -1359,7 +1359,7 @@ if os.path.exists("Info.txt") and os.path.exists("DB.txt"):
                 logs_field['DateStop'] = datetime.datetime.strftime(datetime.datetime.now(), "%d %b - %H:%M:%S")
                 logs_field['EndResult'] = int(isBreak)
                 logs_field['AdditionalInfo'] = addInf
-                cur.Upd(False, "Logs", logs_field)
+                cur.Upd("WorkLogs", logs_field, False)
 else:
     print("Файлы для авторизации не существуют")
 print("Bye-Bye")
